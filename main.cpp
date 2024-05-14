@@ -51,3 +51,21 @@ struct Wall : Object<TLambda> {
 private:
   RectangleShape wall;
 };
+
+template <typename TLambda>
+struct GenerateDrawable : Object<TLambda> {
+public:
+  GenerateDrawable(Vector2f pos, Vector2f size, TLambda lambda)
+    : Object<TLambda>(lambda) {
+    shape_.setPosition(pos);
+    shape_.setSize(size);
+    shape_.setFillColor(Color::Red);
+  }
+
+  void draw(RenderTarget& target, RenderStates states) const {
+    target.draw(shape_, states);
+  }
+
+private:
+  RectangleShape shape_;
+};
