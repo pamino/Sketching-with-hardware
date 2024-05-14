@@ -69,3 +69,20 @@ public:
 private:
   RectangleShape shape_;
 };
+
+void eventLoop() {
+  auto moveWall = []() {};
+  static GenerateDrawable horizontalGenerator(Vector2f{ 50, 50 }, Vector2f{ 50, 50 },
+      [&moveWall]() { return Wall(Vector2f{ 100, 100 }, true, moveWall); });
+  RenderWindow window(sf::VideoMode(800, 600), "Labyrinth");
+  while (window.isOpen()) {
+    Event event;
+    while (window.pollEvent(event)) {
+      if (event.type == Event::Closed)
+        window.close();
+    }
+
+    window.clear(Color::White);
+    window.display();
+  }
+}
