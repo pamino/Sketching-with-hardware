@@ -2,8 +2,10 @@
 #include <vector>
 #include <ranges>
 #include <tuple>
+#include <chrono>
 
 using namespace sf;
+using namespace std::chrono_literals;
 
 struct Car {
 
@@ -22,9 +24,7 @@ struct Clickable : Drawable {
         return invoke();
       }
     }
-    else {
-      return nullptr;
-    }
+    return nullptr;
   }
 
   virtual Clickable* invoke() = 0;
@@ -41,11 +41,34 @@ template <typename TLambda>
 struct _Clickable : Clickable {
   _Clickable(TLambda onClick) : onClick_(onClick) {}
 
-  void draw(RenderTarget& target, RenderStates states) const {
+  void draw(RenderTarget& target, RenderStates states) const override {
     target.draw(*pShape_, states);
+    this->drawMore(target);
   }
 
-  Clickable* invoke()                               { return onClick_(this); }
+  virtual void drawMore(RenderTarget& target) const {}
+
+  Clickable* invoke() override {
+    static _Clickable* mutex = this;
+    static auto timeSinceLastInvoke = 0ms;
+    static auto lastTime = std::chrono::high_resolution_clock::now();
+
+    timeSinceLastInvoke = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - lastTime);
+    if (mutex != this && timeSinceLastInvoke < 100ms)
+      return nullptr;
+
+    timeSinceLastInvoke = 0ms;
+    lastTime = std::chrono::high_resolution_clock::now();
+
+    if (!delay()) {
+      mutex = this;
+      return onClick_(this);
+    }
+
+    return nullptr;
+  }
+
+  virtual bool delay() const                            { return false; }
 
 private:
   TLambda onClick_;
@@ -55,9 +78,9 @@ template <typename TLambda>
 struct Wall : public _Clickable<TLambda> {
   Wall(Vector2f pos, bool horizontal, TLambda lambda) : _Clickable<TLambda>(lambda) {
     if (horizontal)
-      _Clickable<TLambda>::pShape_ =  std::make_unique<RectangleShape>(Vector2f{ 10, 100 });
+      _Clickable<TLambda>::pShape_ = std::make_unique<RectangleShape>(Vector2f{ 20, 200 });
     else
-      _Clickable<TLambda>::pShape_ = std::make_unique<RectangleShape>(Vector2f{ 100, 10 });
+      _Clickable<TLambda>::pShape_ = std::make_unique<RectangleShape>(Vector2f{ 200, 20 });
 
     _Clickable<TLambda>::pShape_->setFillColor(Color::Black);
     _Clickable<TLambda>::pShape_->setOrigin(_Clickable<TLambda>::pShape_->getLocalBounds().width / 2.0f,
@@ -68,28 +91,68 @@ struct Wall : public _Clickable<TLambda> {
 
 template <typename TLambda>
 struct GenerateDrawable : public _Clickable<TLambda> {
-  GenerateDrawable(Vector2f pos, Vector2f size, TLambda lambda)
+  GenerateDrawable(Vector2f pos, Vector2f size, TLambda lambda, const std::string& text)
     : _Clickable<TLambda>(lambda) {
     _Clickable<TLambda>::pShape_ = std::make_unique<CircleShape>(50);
     _Clickable<TLambda>::pShape_->setPosition(pos);
     _Clickable<TLambda>::pShape_->setFillColor(Color::Red);
+
+    if (!font_.loadFromFile("arial.ttf")) {
+      throw std::runtime_error("Failed to load font");
+    }
+
+    text_.setFont(font_);
+    text_.setCharacterSize(15); // Adjust the size if necessary
+    text_.setFillColor(Color::Black);
+    text_.setString(text);
+
+    // Center the text in the circle
+    FloatRect textRect = text_.getLocalBounds();
+    text_.setOrigin(textRect.left + textRect.width / 2.0f, textRect.top + textRect.height / 2.0f);
+    text_.setPosition(pos + Vector2f(50, 50));
   }
+
+  void drawMore(RenderTarget& target) const override {
+    target.draw(text_);
+  }
+
+  bool delay() const override {
+    static auto start = std::chrono::high_resolution_clock::now();
+    static auto end = std::chrono::high_resolution_clock::now() + 500ms;
+
+    end = std::chrono::high_resolution_clock::now();
+    if (std::chrono::duration_cast<std::chrono::milliseconds>(end - start) > 500ms) {
+      start = std::chrono::high_resolution_clock::now();
+      return false;
+    }
+    return true;
+  }
+
+private:
+  Text text_;
+  Font font_;
 };
 
 void eventLoop() {
-  RenderWindow window(sf::VideoMode(800, 600), "Labyrinth");
+  RenderWindow window(sf::VideoMode(1600, 1200), "Labyrinth");
 
-  auto moveWall = [&window](Clickable* pWall) -> Clickable* { 
+  auto moveWall = [&window](Clickable* pWall) -> Clickable* {
     pWall->move(window.mapPixelToCoords(Mouse::getPosition(window)));
     return nullptr; };
-  auto createWall = [moveWall](Clickable*) { return new Wall(Vector2f{400, 300}, true, moveWall); };
+  auto createHWall = [moveWall](Clickable*) { return new Wall(Vector2f{400, 300}, false, moveWall); };
+  auto createVWall = [moveWall](Clickable*) { return new Wall(Vector2f{400, 300}, true, moveWall); };
 
-  auto horizontalGenerator = new GenerateDrawable(Vector2f{ 50, 50 }, Vector2f{ 50, 50 }, createWall);
+  auto horizontalGenerator = new GenerateDrawable(Vector2f{ 50, 50 }, Vector2f{ 50, 50 }, createHWall,
+      "   generate \nhorizontal wall");
+  auto verticalGenerator = new GenerateDrawable(Vector2f{ 50, 150 }, Vector2f{ 50, 50 }, createVWall,
+    "   generate \nvertical wall");
 
   std::vector<std::unique_ptr<Drawable>> drawables;
   std::vector<Drawable*> clickables;
 
   drawables.push_back(std::unique_ptr<Drawable>((Drawable*)horizontalGenerator));
+  clickables.push_back(drawables.back().get());
+  drawables.push_back(std::unique_ptr<Drawable>((Drawable*)verticalGenerator));
   clickables.push_back(drawables.back().get());
 
   while (window.isOpen()) {
