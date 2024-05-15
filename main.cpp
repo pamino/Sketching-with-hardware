@@ -4,21 +4,22 @@
 #include <tuple>
 
 using namespace sf;
-template <typename TLambda>
-struct Object : Drawable {
-  Object(TLambda onClick) : onClick_(onClick) {}
 
+struct Car {
+
+};
+
+struct ClickableBase : Drawable {
   bool isMouseOver(RenderWindow* pWindow) {
     Vector2f mousePos = pWindow->mapPixelToCoords(Mouse::getPosition(*pWindow));
     FloatRect buttonRect = pShape_->getGlobalBounds();
     return buttonRect.contains(mousePos);
   }
 
-  template <typename... T>
-  std::unique_ptr<Drawable> isClicked(RenderWindow* pWindow, T... args) {
+  ClickableBase* isClicked(RenderWindow* pWindow) {
     if (isMouseOver(pWindow)) {
       if (Mouse::isButtonPressed(Mouse::Left)) {
-        return std::unique_ptr<Drawable>((Drawable*)onClick_(args...));
+        return invoke();
       }
     }
     else {
@@ -26,54 +27,66 @@ struct Object : Drawable {
     }
   }
 
+  virtual ClickableBase* invoke() = 0;
+
+protected:
+  std::unique_ptr<Shape> pShape_{nullptr};
+};
+
+template <typename TLambda>
+struct Clickable : ClickableBase {
+  Clickable(TLambda onClick) : onClick_(onClick) {}
+
   void draw(RenderTarget& target, RenderStates states) const {
     target.draw(*pShape_, states);
   }
 
-  std::unique_ptr<Shape> pShape_;
+  ClickableBase* invoke()                               { return onClick_(); }
 
 private:
   TLambda onClick_;
 };
 
 template <typename TLambda>
-struct Wall : public Object<TLambda> {
-  Wall(Vector2f pos, bool horizontal, TLambda lambda) : Object<TLambda>(lambda) {
+struct Wall : public Clickable<TLambda> {
+  Wall(Vector2f pos, bool horizontal, TLambda lambda) : Clickable<TLambda>(lambda) {
     if (horizontal)
-      Object<TLambda>::pShape_ =  std::make_unique<RectangleShape>(Vector2f{ 10, 100 });
+      Clickable<TLambda>::pShape_ =  std::make_unique<RectangleShape>(Vector2f{ 10, 100 });
     else
-      Object<TLambda>::pShape_ = std::make_unique<RectangleShape>(Vector2f{ 100, 10 });
+      Clickable<TLambda>::pShape_ = std::make_unique<RectangleShape>(Vector2f{ 100, 10 });
 
-    Object<TLambda>::pShape_->setFillColor(Color::Black);
-    Object<TLambda>::pShape_->setOrigin(Object<TLambda>::pShape_->getLocalBounds().width / 2.0f,
-        Object<TLambda>::pShape_->getLocalBounds().height / 2.0f);
-    Object<TLambda>::pShape_->setPosition(pos);
+    Clickable<TLambda>::pShape_->setFillColor(Color::Black);
+    Clickable<TLambda>::pShape_->setOrigin(Clickable<TLambda>::pShape_->getLocalBounds().width / 2.0f,
+      Clickable<TLambda>::pShape_->getLocalBounds().height / 2.0f);
+    Clickable<TLambda>::pShape_->setPosition(pos);
   }
 
   void move(Vector2f pos) {
-    Object::pShape_->setPosition(pos);
+    Clickable<TLambda>::pShape_->setPosition(pos);
   }
 };
 
 template <typename TLambda>
-struct GenerateDrawable : public Object<TLambda> {
+struct GenerateDrawable : public Clickable<TLambda> {
   GenerateDrawable(Vector2f pos, Vector2f size, TLambda lambda)
-    : Object<TLambda>(lambda) {
-    Object<TLambda>::pShape_ = std::make_unique<CircleShape>(50);
-    Object<TLambda>::pShape_->setPosition(pos);
-    Object<TLambda>::pShape_->setFillColor(Color::Red);
+    : Clickable<TLambda>(lambda) {
+    Clickable<TLambda>::pShape_ = std::make_unique<CircleShape>(50);
+    Clickable<TLambda>::pShape_->setPosition(pos);
+    Clickable<TLambda>::pShape_->setFillColor(Color::Red);
   }
 };
 
 void eventLoop() {
-  auto moveWall = []() {};
-  auto createWall = [&moveWall]() { return new Wall(Vector2f{400, 300}, true, moveWall); };
+  auto moveWall = []() -> ClickableBase* { return nullptr; };
+  auto createWall = [moveWall]() { return new Wall(Vector2f{400, 300}, true, moveWall); };
 
-  auto horizontalGenerator = new GenerateDrawable(Vector2f{ 50, 50 }, Vector2f{ 50, 50 },
-      createWall);
+  auto horizontalGenerator = new GenerateDrawable(Vector2f{ 50, 50 }, Vector2f{ 50, 50 }, createWall);
 
-  std::vector<std::unique_ptr<Drawable>> objects;
-  objects.push_back(std::unique_ptr<Drawable>((Drawable*)(horizontalGenerator)));
+  std::vector<std::unique_ptr<Drawable>> drawables;
+  std::vector<Drawable*> clickables;
+
+  drawables.push_back(std::unique_ptr<Drawable>((Drawable*)horizontalGenerator));
+  clickables.push_back(drawables.back().get());
 
   RenderWindow window(sf::VideoMode(800, 600), "Labyrinth");
   while (window.isOpen()) {
@@ -84,11 +97,20 @@ void eventLoop() {
     }
 
     window.clear(Color::White);
-    for (auto& pObject : objects)
-      window.draw(*pObject);
-    if (auto draw = horizontalGenerator->isClicked(&window);
-        draw != nullptr)
-      objects.push_back(std::move(draw));
+
+    for (auto& pDrawable : drawables)
+      window.draw(*pDrawable);
+
+    std::vector<Drawable*> appendClickables;
+    for (auto& clicked : clickables) {
+      if (auto draw = (((ClickableBase*)clicked)->isClicked(&window));
+          draw != nullptr) {
+        drawables.push_back(std::unique_ptr<Drawable>((Drawable*)draw));
+        appendClickables.push_back(drawables.back().get());
+      }
+    }
+    clickables.append_range(appendClickables);
+
     window.display();
   }
 }
