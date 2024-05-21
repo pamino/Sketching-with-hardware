@@ -30,8 +30,8 @@ Distance dist2(ECHO2, TRIG2);
 
 void setup() {
   Serial.begin(9600);
-  dist1.begin();
-  dist2.begin();
+  dist1.setup();
+  dist2.setup();
 }
 
 void loop() {
