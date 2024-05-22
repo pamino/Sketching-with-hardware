@@ -7,6 +7,19 @@
 using namespace sf;
 using namespace std::chrono_literals;
 
+
+float angleBetween(const Vector2f& start, const Vector2f& target) {
+  float dot = start.x * target.x + start.y * target.y;
+  float det = start.x * target.y - start.y * target.x;  // Determinant
+  return atan2(det, dot);  // Angle in radians
+}
+
+Vector2f rotateVector(const Vector2f& vector, float angleDegrees) {
+  Transform rotation;
+  rotation.rotate(angleDegrees);  // Rotate transform by angle in degrees
+  return rotation.transformPoint(vector);  // Apply rotation to the vector
+}
+// ------ Object ------
 struct Object : Drawable {
   bool isMouseOver(RenderWindow* pWindow) {
     Vector2f mousePos = pWindow->mapPixelToCoords(Mouse::getPosition(*pWindow));
@@ -28,6 +41,15 @@ struct Object : Drawable {
 
   virtual void move2(Vector2f pos)                      { pShape_->setPosition(pos); }
   virtual void move(Vector2f pos)                       { pShape_->setPosition(pShape_->getPosition() + pos); }
+  virtual void turn(Vector2f direction) {
+    auto angle = angleBetween(front_, direction);
+    float angleDegrees = angle * (180.0f / 3.14f);  // Convert radians to degrees
+
+    if (angle > 0)
+      front_ = rotateVector(front_, -turnSpeed_);
+    else
+      front_ = rotateVector(front_, turnSpeed_);
+  }
 
   void draw(RenderTarget& target, RenderStates states) const override { target.draw(*pShape_, states); }
 
@@ -36,26 +58,35 @@ struct Object : Drawable {
     Vector2f savedPos = pShape_->getPosition();
 
     if (Keyboard::isKeyPressed(Keyboard::Up))
-      move(Vector2f{0, -0.1f});
+      move(front_ * speed_);
     if (Keyboard::isKeyPressed(Keyboard::Down))
-      move(Vector2f{0, 0.1f});
+      move(-front_ * speed_);
     if (Keyboard::isKeyPressed(Keyboard::Right))
-      move(Vector2f{0.1f, 0});
+      turn(Vector2f(-1, 0));
     if (Keyboard::isKeyPressed(Keyboard::Left))
-      move(Vector2f{-0.1f, 0});
+      turn(Vector2f(1, 0));
 
     for (auto pDrawable : *pDrawables) {
       if (pDrawable.get() == this)
         continue;
-      if (pShape_->getGlobalBounds().intersects(((Object*)(pDrawable.get()))->pShape_->getGlobalBounds()))
+      if (collides(((Object*)(pDrawable.get()))->pShape_->getGlobalBounds()))
         move2(savedPos);
     }
   }
 
+  virtual bool collides(FloatRect rect) { return pShape_->getGlobalBounds().intersects(rect); }
+
+  float x() { return pShape_->getPosition().x; }
+  float y() { return pShape_->getPosition().y; }
+
 protected:
   std::shared_ptr<Shape> pShape_{nullptr};
+  Vector2f front_{0, -1};
+  float turnSpeed_{0.1f};
+  float speed_{0.1f};
 };
 
+// ------ Clickable ------
 template <typename TLambda>
 struct Clickable : Object {
   Clickable(TLambda onClick) : onClick_(onClick) {}
@@ -85,6 +116,7 @@ private:
   TLambda onClick_;
 };
 
+// ------ Wall ------
 template <typename TLambda>
 struct Wall : public Clickable<TLambda> {
   Wall(Vector2f pos, bool horizontal, TLambda lambda) : Clickable<TLambda>(lambda) {
@@ -100,6 +132,7 @@ struct Wall : public Clickable<TLambda> {
   }
 };
 
+// ------ GenerateDrawable ------
 template <typename TLambda>
 struct GenerateDrawable : public Clickable<TLambda> {
   GenerateDrawable(Vector2f pos, Vector2f size, TLambda lambda, const std::string& text)
@@ -146,6 +179,7 @@ private:
   Font font_;
 };
 
+// ------ DistanceSensor ------
 struct DistanceSensor : public Object {
   DistanceSensor() = default;
 
@@ -222,6 +256,7 @@ struct DistanceSensor : public Object {
     Vector2f direction;
 };
 
+// ------ Car ------
 template <typename TLambda>
 struct Car : public Clickable<TLambda> {
   Car(Vector2f pos, TLambda lambda) : Clickable<TLambda>(lambda) {
@@ -238,9 +273,9 @@ struct Car : public Clickable<TLambda> {
     topRight_ = DistanceSensor(Vector2f(1, 0), Vector2f(0, 0), radiusSensors);
     bottomLeft_ = DistanceSensor(Vector2f(-1, 0), Vector2f(0, 0), radiusSensors);
     bottomRight_ = DistanceSensor(Vector2f(1, 0), Vector2f(0, 0), radiusSensors);
-    front_ = DistanceSensor(Vector2f(0, 1), Vector2f(0, 0), radiusSensors);
+    topMiddle_ = DistanceSensor(Vector2f(0, 1), Vector2f(0, 0), radiusSensors);
 
-    moveSensors();
+    updateSensorPositions();
   }
 
   void draw(RenderTarget& target, RenderStates states) const override {
@@ -249,12 +284,12 @@ struct Car : public Clickable<TLambda> {
     target.draw(topLeft_);
     target.draw(bottomRight_);
     target.draw(bottomLeft_);
-    target.draw(front_);
+    target.draw(topMiddle_);
   }
 
   void move2(Vector2f pos) override {
     Object::move2(pos);
-    moveSensors();
+    updateSensorPositions();
   }
 
   void move(Vector2f pos) override {
@@ -263,16 +298,58 @@ struct Car : public Clickable<TLambda> {
     topLeft_.move(pos);
     bottomRight_.move(pos);
     bottomLeft_.move(pos);
-    front_.move(pos);
+    topMiddle_.move(pos);
   }
 
-  void moveSensors() {
+  bool collides(FloatRect rect) override {
+    RectangleShape car = *((RectangleShape*)Object::pShape_.get());
+    Vector2f topLeft = car.getTransform().transformPoint(Vector2f(0, 0));
+    Vector2f topRight = car.getTransform().transformPoint(Vector2f(car.getSize().x, 0));
+    Vector2f bottomLeft = car.getTransform().transformPoint(Vector2f(0, car.getSize().y));
+    Vector2f bottomRight = car.getTransform().transformPoint(Vector2f(car.getSize().x, car.getSize().y));
+    for (auto edge : edges()) {
+      if (rect.contains(edge))
+        return true;
+    }
+    return false;
+
+  }
+
+  std::vector<Vector2f> edges() {
+    RectangleShape car = *((RectangleShape*)Object::pShape_.get());
+    return {
+      car.getTransform().transformPoint(Vector2f(0, 0)), // top left
+      car.getTransform().transformPoint(Vector2f(car.getSize().x, 0)), // top right
+      car.getTransform().transformPoint(Vector2f(0, car.getSize().y)), // bottom left
+      car.getTransform().transformPoint(Vector2f(car.getSize().x, car.getSize().y)), // bottom right
+      car.getTransform().transformPoint(sf::Vector2f(car.getSize().x / 2, 0)) // top middle
+    };
+  }
+
+  void updateSensorPositions() {
     auto bounds = Clickable<TLambda>::pShape_->getGlobalBounds();
-    topLeft_.move2(Vector2f(bounds.left - radiusSensors, bounds.top - radiusSensors));
-    topRight_.move2(Vector2f(bounds.left - radiusSensors + bounds.width, bounds.top - radiusSensors));
-    bottomLeft_.move2(Vector2f(bounds.left - radiusSensors, bounds.top - radiusSensors + bounds.height));
-    bottomRight_.move2(Vector2f(bounds.left - radiusSensors + bounds.width, bounds.top - radiusSensors + bounds.height));
-    front_.move2(Vector2f(bounds.left + bounds.width / 2 - radiusSensors, bounds.top - radiusSensors));
+    topLeft_.move2(Vector2f(edges()[0].x - radiusSensors, edges()[0].y - radiusSensors));
+    topRight_.move2(Vector2f(edges()[1].x - radiusSensors, edges()[1].y - radiusSensors));
+    bottomLeft_.move2(Vector2f(edges()[2].x - radiusSensors, edges()[2].y - radiusSensors));
+    bottomRight_.move2(Vector2f(edges()[3].x - radiusSensors, edges()[3].y - radiusSensors));
+    topMiddle_.move2(Vector2f(edges()[4].x - radiusSensors, edges()[4].y - radiusSensors));
+  }
+
+  void turn(Vector2f direction) override {
+    auto angle = angleBetween(direction, Object::front_);
+    Object::turn(direction);
+    if (angle > 0)
+      ((RectangleShape*)(Object::pShape_.get()))->rotate(Object::turnSpeed_);
+    else
+      ((RectangleShape*)(Object::pShape_.get()))->rotate(-Object::turnSpeed_);
+
+    updateSensorPositions();
+
+    topRight_.turn(direction);
+    topLeft_.turn(direction);
+    bottomLeft_.turn(direction);
+    bottomLeft_.turn(direction);
+    topMiddle_.turn(direction);
   }
 
 private:
@@ -280,13 +357,10 @@ private:
   DistanceSensor topLeft_;
   DistanceSensor bottomRight_;
   DistanceSensor bottomLeft_;
-  DistanceSensor front_;
+  DistanceSensor topMiddle_;
 
   int radiusSensors = 10;
 };
-
-
-
 
 void eventLoop() {
   RenderWindow window(sf::VideoMode(1600, 1200), "Labyrinth");
@@ -304,15 +378,12 @@ void eventLoop() {
     "   generate \nvertical wall")};
   std::shared_ptr<Drawable> car{new Car(Vector2f{500, 500}, moveObj)};
 
-  std::vector<std::shared_ptr<Drawable>> drawables;
   std::vector<std::shared_ptr<Drawable>> clickables;
   std::vector<std::shared_ptr<Drawable>> walls;
 
-  drawables.push_back(std::move(horizontalGenerator));
-  drawables.push_back(std::move(verticalGenerator));
-  drawables.push_back(car);
-
-  clickables = drawables;
+  clickables.push_back(std::move(horizontalGenerator));
+  clickables.push_back(std::move(verticalGenerator));
+  clickables.push_back(car);
 
   while (window.isOpen()) {
     Event event;
@@ -323,21 +394,21 @@ void eventLoop() {
 
     window.clear(Color::White);
 
-    for (auto& pDrawable : drawables)
+    for (auto& pDrawable : clickables)
       window.draw(*pDrawable);
 
     std::vector<std::shared_ptr<Drawable>> appendClickables;
     for (auto& pClicked : clickables) {
       if (auto&& draw = (((Object*)pClicked.get())->isClicked(&window));
           draw != nullptr) {
-        drawables.push_back(std::shared_ptr<Drawable>(draw));
-        appendClickables.push_back(drawables.back());
+
+        appendClickables.push_back(std::shared_ptr<Drawable>(draw));
       }
     }
     clickables.append_range(appendClickables);
     walls.append_range(appendClickables);
 
-    ((Object*)car.get())->keyBoardMove(&drawables);
+    ((Object*)car.get())->keyBoardMove(&clickables);
 
     window.display();
   }
