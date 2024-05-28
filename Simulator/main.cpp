@@ -3,22 +3,27 @@
 #include <ranges>
 #include <tuple>
 #include <chrono>
+#include <numeric>
 
 using namespace sf;
 using namespace std::chrono_literals;
 
-
-float angleBetween(const Vector2f& start, const Vector2f& target) {
-  float dot = start.x * target.x + start.y * target.y;
-  float det = start.x * target.y - start.y * target.x;  // Determinant
-  return atan2(det, dot);  // Angle in radians
-}
+static Font font_;
 
 Vector2f rotateVector(const Vector2f& vector, float angleDegrees) {
   Transform rotation;
   rotation.rotate(angleDegrees);  // Rotate transform by angle in degrees
   return rotation.transformPoint(vector);  // Apply rotation to the vector
 }
+
+sf::Vector2f normalizeVector(const sf::Vector2f& vector) {
+  float magnitude = std::sqrt(vector.x * vector.x + vector.y * vector.y);
+  if (magnitude == 0) {
+    return sf::Vector2f(0.f, 0.f); // Return zero vector if original vector is zero vector
+  }
+  return sf::Vector2f(vector.x / magnitude, vector.y / magnitude);
+}
+
 // ------ Object ------
 struct Object : Drawable {
   bool isMouseOver(RenderWindow* pWindow) {
@@ -41,14 +46,13 @@ struct Object : Drawable {
 
   virtual void move2(Vector2f pos)                      { pShape_->setPosition(pos); }
   virtual void move(Vector2f pos)                       { pShape_->setPosition(pShape_->getPosition() + pos); }
-  virtual void turn(Vector2f direction) {
-    auto angle = angleBetween(front_, direction);
-    float angleDegrees = angle * (180.0f / 3.14f);  // Convert radians to degrees
-
-    if (angle > 0)
-      front_ = rotateVector(front_, -turnSpeed_);
-    else
+  virtual void turn(bool right) {
+    if (right)
       front_ = rotateVector(front_, turnSpeed_);
+    else
+      front_ = rotateVector(front_, -turnSpeed_);
+
+    front_ = normalizeVector(front_);
   }
 
   void draw(RenderTarget& target, RenderStates states) const override { target.draw(*pShape_, states); }
@@ -62,15 +66,20 @@ struct Object : Drawable {
     if (Keyboard::isKeyPressed(Keyboard::Down))
       move(-front_ * speed_);
     if (Keyboard::isKeyPressed(Keyboard::Right))
-      turn(Vector2f(-1, 0));
+      turn(true);
     if (Keyboard::isKeyPressed(Keyboard::Left))
-      turn(Vector2f(1, 0));
+      turn(false);
 
-    for (auto pDrawable : *pDrawables) {
+    for (auto& pDrawable : *pDrawables) {
       if (pDrawable.get() == this)
         continue;
-      if (collides(((Object*)(pDrawable.get()))->pShape_->getGlobalBounds()))
+      if (collides(((Object*)(pDrawable.get()))->pShape_->getGlobalBounds())) {
         move2(savedPos);
+        if (Keyboard::isKeyPressed(Keyboard::Right))
+          turn(false);
+        if (Keyboard::isKeyPressed(Keyboard::Left))
+          turn(true);
+      }
     }
   }
 
@@ -82,7 +91,7 @@ struct Object : Drawable {
 protected:
   std::shared_ptr<Shape> pShape_{nullptr};
   Vector2f front_{0, -1};
-  float turnSpeed_{0.1f};
+  float turnSpeed_{0.03f};
   float speed_{0.1f};
 };
 
@@ -141,10 +150,6 @@ struct GenerateDrawable : public Clickable<TLambda> {
     Clickable<TLambda>::pShape_->setPosition(pos);
     Clickable<TLambda>::pShape_->setFillColor(Color::Red);
 
-    if (!font_.loadFromFile("arial.ttf")) {
-      throw std::runtime_error("Failed to load font");
-    }
-
     text_.setFont(font_);
     text_.setCharacterSize(15); // Adjust the size if necessary
     text_.setFillColor(Color::Black);
@@ -176,90 +181,96 @@ struct GenerateDrawable : public Clickable<TLambda> {
 
 private:
   Text text_;
-  Font font_;
 };
 
 // ------ DistanceSensor ------
 struct DistanceSensor : public Object {
   DistanceSensor() = default;
 
-  DistanceSensor(Vector2f direct, Vector2f pos, int radius)
-    : direction(direct) {
+  DistanceSensor(Vector2f direct, Vector2f pos, int radius) {
     Object::pShape_ = std::make_shared<CircleShape>(radius);
     Object::pShape_->setFillColor(Color::Red);
     Object::pShape_->setPosition(pos);
+
+    Object::front_ = direct;
   }
 
   DistanceSensor& operator = (const DistanceSensor& rhs) {
     this->pShape_ = rhs.pShape_;
-    this->direction = rhs.direction;
+    this->front_ = rhs.front_;
     return *this;
   }
 
-  std::optional<float> measureDistance(std::vector<std::shared_ptr<Object>>* pWalls) {
+  std::optional<float> measureDistance(std::vector<std::shared_ptr<Drawable>>* pWalls) {
     for (auto pWall : *pWalls) {
-      if (auto distance = rectangleDistance(*(RectangleShape*)pWall->shape().get()); distance.has_value())
+      if (auto distance = rectangleDistance(*(RectangleShape*)((Object*)pWall.get())->shape().get());
+          distance.has_value())
         return distance.value();
     }
 
     return std::nullopt;
   }
 
-  std::optional<float> rectangleDistance(const RectangleShape& rectangle) {
-    // These are the bounds of the rectangle
-    float rectLeft = rectangle.getPosition().x;
-    float rectTop = rectangle.getPosition().y;
-    float rectRight = rectLeft + rectangle.getSize().x;
-    float rectBottom = rectTop + rectangle.getSize().y;
+  void draw(RenderTarget& target, RenderStates states) const override {
+    Object::draw(target, states);
 
-    std::vector<float> distances;
-
-    auto pos = pShape_->getPosition();
-    pos.x += ((CircleShape*)(pShape_.get()))->getRadius();
-    pos.y += ((CircleShape*)(pShape_.get()))->getRadius();
-
-    // Check intersection with each side of the rectangle
-    // Left side
-    if (direction.x != 0) { // Avoid division by zero
-      float t = (rectLeft - pos.x) / direction.x;
-      float y = pos.y + t * direction.y;
-      if (t >= 0 && y >= rectTop && y <= rectBottom) distances.push_back(t);
-    }
-
-    // Right side
-    if (direction.x != 0) {
-      float t = (rectRight - pos.x) / direction.x;
-      float y = pos.y + t * direction.y;
-      if (t >= 0 && y >= rectTop && y <= rectBottom) distances.push_back(t);
-    }
-
-    // Top side
-    if (direction.y != 0) {
-      float t = (rectTop - pos.y) / direction.y;
-      float x = pos.x + t * direction.x;
-      if (t >= 0 && x >= rectLeft && x <= rectRight) distances.push_back(t);
-    }
-
-    // Bottom side
-    if (direction.y != 0) {
-      float t = (rectBottom - pos.y) / direction.y;
-      float x = pos.x + t * direction.x;
-      if (t >= 0 && x >= rectLeft && x <= rectRight) distances.push_back(t);
-    }
-
-    if (distances.empty()) return std::nullopt;
-
-    // Return the smallest positive distance
-    return *std::min_element(distances.begin(), distances.end());
   }
 
-    Vector2f direction;
+  std::optional<float> rectangleDistance(const RectangleShape& rectangle) {
+    // Bounds of the rectangle
+    float width = rectangle.getSize().x;
+    float height = rectangle.getSize().y;
+
+    float centerX = rectangle.getPosition().x;
+    float centerY = rectangle.getPosition().y;
+
+    float rectLeft = centerX - width / 2.0f;
+    float rectRight = centerX + width / 2.0f;
+    float rectTop = centerY - height / 2.0f;
+    float rectBottom = centerY + height / 2.0f;
+
+    std::vector<float> distances;
+    Vector2f pos = Object::pShape_->getPosition();
+    pos += Vector2f(((CircleShape*)(Object::pShape_.get()))->getRadius(), ((CircleShape*)(Object::pShape_.get()))->getRadius());
+
+    // Direction of the sensor
+    Vector2f direction = Object::front_;
+
+    // Check each side of the rectangle for intersections
+    if (direction.x != 0) {
+      float tLeft = (rectLeft - pos.x) / direction.x;
+      float yLeft = pos.y + tLeft * direction.y;
+      if (tLeft >= 0 && yLeft >= rectTop && yLeft <= rectBottom) distances.push_back(tLeft);
+
+      float tRight = (rectRight - pos.x) / direction.x;
+      float yRight = pos.y + tRight * direction.y;
+      if (tRight >= 0 && yRight >= rectTop && yRight <= rectBottom) distances.push_back(tRight);
+    }
+
+    if (direction.y != 0) {
+      float tTop = (rectTop - pos.y) / direction.y;
+      float xTop = pos.x + tTop * direction.x;
+      if (tTop >= 0 && xTop >= rectLeft && xTop <= rectRight) distances.push_back(tTop);
+
+      float tBottom = (rectBottom - pos.y) / direction.y;
+      float xBottom = pos.x + tBottom * direction.x;
+      if (tBottom >= 0 && xBottom >= rectLeft && xBottom <= rectRight) distances.push_back(tBottom);
+    }
+
+    // Return the smallest distance if any were found
+    if (!distances.empty()) {
+      return *std::min_element(distances.begin(), distances.end());
+    }
+
+    return std::nullopt; // No intersection found
+  }
+
 };
 
 // ------ Car ------
 template <typename TLambda>
 struct Car : public Clickable<TLambda> {
-  Car(Vector2f pos, TLambda lambda) : Clickable<TLambda>(lambda) {
+  Car(Vector2f pos, TLambda lambda) : Clickable<TLambda>(lambda), sensorsText_(5) {
     Clickable<TLambda>::pShape_ = std::make_shared<RectangleShape>(Vector2f{ 75, 100 });
 
     Clickable<TLambda>::pShape_->setFillColor(Color::Blue);
@@ -269,22 +280,41 @@ struct Car : public Clickable<TLambda> {
 
     auto bounds = Clickable<TLambda>::pShape_->getGlobalBounds();
     int radius = 10;
-    topLeft_ = DistanceSensor(Vector2f(-1, 0), Vector2f(0, 0), radiusSensors);
-    topRight_ = DistanceSensor(Vector2f(1, 0), Vector2f(0, 0), radiusSensors);
-    bottomLeft_ = DistanceSensor(Vector2f(-1, 0), Vector2f(0, 0), radiusSensors);
-    bottomRight_ = DistanceSensor(Vector2f(1, 0), Vector2f(0, 0), radiusSensors);
-    topMiddle_ = DistanceSensor(Vector2f(0, 1), Vector2f(0, 0), radiusSensors);
+    sensors_.push_back(DistanceSensor(Vector2f(1, 0), Vector2f(0, 0), radiusSensors));
+    sensors_.push_back(DistanceSensor(Vector2f(-1, 0), Vector2f(0, 0), radiusSensors));
+    sensors_.push_back(DistanceSensor(Vector2f(1, 0), Vector2f(0, 0), radiusSensors));
+    sensors_.push_back(DistanceSensor(Vector2f(-1, 0), Vector2f(0, 0), radiusSensors));
+    sensors_.push_back(DistanceSensor(Vector2f(0, -1), Vector2f(0, 0), radiusSensors));
+
+    int yPos = 300;
+    for (auto& text : sensorsText_) {
+      text.setFont(font_);
+      text.setCharacterSize(24);
+      text.setFillColor(Color::Black);
+      text.setPosition(Vector2f(1200, yPos));
+      yPos -= 50;
+    }
 
     updateSensorPositions();
   }
 
+  void update(std::vector<std::shared_ptr<Drawable>>* pWalls) {
+    int i = 0;
+    std::vector<std::string> names{"Top: ", "Left Top: ", "Right Top: ", "Left Bottom: ", "Right Bottom: "};
+    for (auto&& [sensor, name] : std::views::zip(sensors_, std::views::reverse(names))) {
+      float distance = sensor.measureDistance(pWalls).value_or(10000.0f);
+      sensorsText_[i].setString(name + std::to_string(distance));
+      ++i;
+    }
+  }
+
   void draw(RenderTarget& target, RenderStates states) const override {
     Object::draw(target, states);
-    target.draw(topRight_);
-    target.draw(topLeft_);
-    target.draw(bottomRight_);
-    target.draw(bottomLeft_);
-    target.draw(topMiddle_);
+    for (auto& sensor : sensors_)
+      sensor.draw(target, states);
+
+    for (auto& text : sensorsText_)
+      target.draw(text);
   }
 
   void move2(Vector2f pos) override {
@@ -294,20 +324,12 @@ struct Car : public Clickable<TLambda> {
 
   void move(Vector2f pos) override {
     Object::move(pos);
-    topRight_.move(pos);
-    topLeft_.move(pos);
-    bottomRight_.move(pos);
-    bottomLeft_.move(pos);
-    topMiddle_.move(pos);
+    for (auto sensor : sensors_)
+      sensor.move(pos);
   }
 
   bool collides(FloatRect rect) override {
-    RectangleShape car = *((RectangleShape*)Object::pShape_.get());
-    Vector2f topLeft = car.getTransform().transformPoint(Vector2f(0, 0));
-    Vector2f topRight = car.getTransform().transformPoint(Vector2f(car.getSize().x, 0));
-    Vector2f bottomLeft = car.getTransform().transformPoint(Vector2f(0, car.getSize().y));
-    Vector2f bottomRight = car.getTransform().transformPoint(Vector2f(car.getSize().x, car.getSize().y));
-    for (auto edge : edges()) {
+    for (auto& edge : edges()) {
       if (rect.contains(edge))
         return true;
     }
@@ -328,36 +350,28 @@ struct Car : public Clickable<TLambda> {
 
   void updateSensorPositions() {
     auto bounds = Clickable<TLambda>::pShape_->getGlobalBounds();
-    topLeft_.move2(Vector2f(edges()[0].x - radiusSensors, edges()[0].y - radiusSensors));
-    topRight_.move2(Vector2f(edges()[1].x - radiusSensors, edges()[1].y - radiusSensors));
-    bottomLeft_.move2(Vector2f(edges()[2].x - radiusSensors, edges()[2].y - radiusSensors));
-    bottomRight_.move2(Vector2f(edges()[3].x - radiusSensors, edges()[3].y - radiusSensors));
-    topMiddle_.move2(Vector2f(edges()[4].x - radiusSensors, edges()[4].y - radiusSensors));
+    sensors_[0].move2(Vector2f(edges()[0].x - radiusSensors, edges()[0].y - radiusSensors));
+    sensors_[1].move2(Vector2f(edges()[1].x - radiusSensors, edges()[1].y - radiusSensors));
+    sensors_[2].move2(Vector2f(edges()[2].x - radiusSensors, edges()[2].y - radiusSensors));
+    sensors_[3].move2(Vector2f(edges()[3].x - radiusSensors, edges()[3].y - radiusSensors));
+    sensors_[4].move2(Vector2f(edges()[4].x - radiusSensors, edges()[4].y - radiusSensors));
   }
 
-  void turn(Vector2f direction) override {
-    auto angle = angleBetween(direction, Object::front_);
-    Object::turn(direction);
-    if (angle > 0)
+  void turn(bool right) override {
+    Object::turn(right);
+    if (right)
       ((RectangleShape*)(Object::pShape_.get()))->rotate(Object::turnSpeed_);
     else
       ((RectangleShape*)(Object::pShape_.get()))->rotate(-Object::turnSpeed_);
 
     updateSensorPositions();
-
-    topRight_.turn(direction);
-    topLeft_.turn(direction);
-    bottomLeft_.turn(direction);
-    bottomLeft_.turn(direction);
-    topMiddle_.turn(direction);
+    for (auto& sensor : sensors_)
+      sensor.turn(right);
   }
 
 private:
-  DistanceSensor topRight_;
-  DistanceSensor topLeft_;
-  DistanceSensor bottomRight_;
-  DistanceSensor bottomLeft_;
-  DistanceSensor topMiddle_;
+  std::vector<DistanceSensor> sensors_; // topLeft, topRight, bottomLeft, bottomRight, topMiddle
+  std::vector<Text> sensorsText_;
 
   int radiusSensors = 10;
 };
@@ -394,6 +408,8 @@ void eventLoop() {
 
     window.clear(Color::White);
 
+    ((Car<decltype(moveObj)>*)(car.get()))->update(&walls);
+
     for (auto& pDrawable : clickables)
       window.draw(*pDrawable);
 
@@ -415,6 +431,9 @@ void eventLoop() {
 }
 
 int main() {
+  if (!font_.loadFromFile("arial.ttf")) {
+    throw std::runtime_error("Failed to load font");
+  }
   eventLoop();
 
   return 0;
