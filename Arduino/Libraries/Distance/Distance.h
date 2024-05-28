@@ -10,7 +10,7 @@
 class Distance {
   public:
     Distance(int echoPin, int triggerPin);
-    void begin();
+    void setup();
     float measure();
   private:
     int _echoPin;

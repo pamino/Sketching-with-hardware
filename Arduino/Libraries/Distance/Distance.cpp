@@ -10,7 +10,7 @@ Distance::Distance(int echoPin, int triggerPin) {
   _triggerPin = triggerPin;
 }
 
-void Distance::begin() {
+void Distance::setup() {
   pinMode(_echoPin, INPUT);
   pinMode(_triggerPin, OUTPUT);
   digitalWrite(_triggerPin, LOW);
