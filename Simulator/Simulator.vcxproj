@@ -129,6 +129,9 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="AdjacencyMatrix.cpp" />
+    <ClCompile Include="AdjacencyMatrix.h" />
+    <ClCompile Include="main.cpp" />
     <ClCompile Include="PathFinding.cpp" />
     <ClCompile Include="Simulator.cpp" />
   </ItemGroup>

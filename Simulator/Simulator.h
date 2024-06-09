@@ -46,8 +46,12 @@ public:
   virtual void move2(Vector2f pos) { pShape_->setPosition(pos); }
   virtual void move(Vector2f direct) { pShape_->setPosition(pShape_->getPosition() + direct); }
   virtual void turn(bool right) {
-    front_ = right ? rotateVector(front_, turnSpeed_) : rotateVector(front_, -turnSpeed_);
-    front_ = normalizeVector(front_);
+    front = right ? rotateVector(front, turnSpeed_) : rotateVector(front, -turnSpeed_);
+    front = normalizeVector(front);
+  }
+  virtual void turn90(bool right) {
+    front = right ? rotateVector(front, 90) : rotateVector(front, -90);
+    front = normalizeVector(front);
   }
 
   void keyBoardMove(std::vector<std::shared_ptr<Drawable>>* pDrawables);
@@ -59,9 +63,10 @@ public:
   float x() const { return pShape_->getPosition().x; }
   float y() const { return pShape_->getPosition().y; }
 
+  Vector2f front{0, -1};
+
 protected:
   std::shared_ptr<Shape> pShape_{nullptr};
-  Vector2f front_{0, -1};
   float turnSpeed_{0.03f};
   float speed_{0.1f};
 };
@@ -160,6 +165,7 @@ struct Car : public Clickable {
   std::vector<Vector2f> edges();
 
   void turn(bool right) override;
+  void turn90(bool right) override;
 
   const DistanceSensor& distanceSensor(int pos)         { return sensors_[pos]; }
   int getTravelledDistance() { int ret = travelledDistance; travelledDistance = 0; return ret; }

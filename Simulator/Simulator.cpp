@@ -2,12 +2,6 @@
 
 using namespace sf;
 
-static sf::Simulator sim{};
-
-static const auto moveObj = [&](sf::Object* pClickable) -> sf::Object* {
-  pClickable->move2(sim.window.mapPixelToCoords(sf::Mouse::getPosition(sim.window)));
-  return nullptr; };
-
 //--------------------------------------------------------------------------------------------------------------
 // Object
 //--------------------------------------------------------------------------------------------------------------
@@ -33,9 +27,9 @@ void Object::keyBoardMove(std::vector<std::shared_ptr<Drawable>>* pDrawables) {
   Vector2f savedPos = pShape_->getPosition();
 
   if (Keyboard::isKeyPressed(Keyboard::Up))
-    move(front_ * speed_);
+    move(front * speed_);
   if (Keyboard::isKeyPressed(Keyboard::Down))
-    move(-front_ * speed_);
+    move(-front * speed_);
   if (Keyboard::isKeyPressed(Keyboard::Right))
     turn(true);
   if (Keyboard::isKeyPressed(Keyboard::Left))
@@ -124,13 +118,13 @@ DistanceSensor::DistanceSensor(Vector2f direct, Vector2f pos, int radius, std::v
   Object::pShape_->setFillColor(Color::Red);
   Object::pShape_->setPosition(pos);
 
-  Object::front_ = direct;
+  Object::front = direct;
 }
 
 //------ operator = ------
 DistanceSensor& DistanceSensor::operator = (const DistanceSensor& rhs) {
   this->pShape_ = rhs.pShape_;
-  this->front_ = rhs.front_;
+  this->front = rhs.front;
   this->pWalls_ = rhs.pWalls_;
   return *this;
 }
@@ -163,7 +157,7 @@ std::optional<float> DistanceSensor::rectangleDistance(const RectangleShape& rec
   Vector2f pos = Object::pShape_->getPosition();
   pos += Vector2f(((CircleShape*)(Object::pShape_.get()))->getRadius(), ((CircleShape*)(Object::pShape_.get()))->getRadius());
 
-  Vector2f direction = Object::front_;
+  Vector2f direction = Object::front;
 
   if (direction.x != 0) {
     float tLeft = (rectLeft - pos.x) / direction.x;
@@ -290,6 +284,19 @@ void Car::turn(bool right) {
     sensor.turn(right);
 }
 
+//------ turn90 ------
+void Car::turn90(bool right) {
+  Object::turn90(right);
+  if (right)
+    ((RectangleShape*)(Object::pShape_.get()))->rotate(90);
+  else
+    ((RectangleShape*)(Object::pShape_.get()))->rotate(-90);
+
+  updateSensorPositions();
+  for (auto& sensor : sensors_)
+    sensor.turn(right);
+}
+
 //--------------------------------------------------------------------------------------------------------------
 // Simulator
 //--------------------------------------------------------------------------------------------------------------
@@ -312,49 +319,4 @@ Simulator::Simulator() : window(sf::VideoMode(1600, 1200), "Labyrinth") {
   clickables.push_back(std::move(horizontalGenerator));
   clickables.push_back(std::move(verticalGenerator));
   clickables.push_back(car);
-}
-
-//--------------------------------------------------------------------------------------------------------------
-// main
-//--------------------------------------------------------------------------------------------------------------
-
-void eventLoop() {
-  while (sim.window.isOpen()) {
-    Event event;
-    while (sim.window.pollEvent(event)) {
-      if (event.type == Event::Closed)
-        sim.window.close();
-    }
-
-    sim.window.clear(Color::White);
-
-    ((Car*)(sim.car.get()))->update(&sim.walls);
-
-    for (auto& pDrawable : sim.clickables)
-      sim.window.draw(*pDrawable);
-
-    std::vector<std::shared_ptr<Drawable>> appendClickables;
-    for (auto& pClicked : sim.clickables) {
-      if (auto&& draw = (((Object*)pClicked.get())->isClicked(&sim.window));
-          draw != nullptr) {
-
-        appendClickables.push_back(std::shared_ptr<Drawable>(draw));
-      }
-    }
-    sim.clickables.append_range(appendClickables);
-    sim.walls.append_range(appendClickables);
-
-    ((Object*)sim.car.get())->keyBoardMove(&sim.clickables);
-
-    sim.window.display();
-  }
-}
-
-int main() {
-  if (!font_.loadFromFile("arial.ttf")) {
-    throw std::runtime_error("Failed to load font");
-  }
-  eventLoop();
-
-  return 0;
 }
