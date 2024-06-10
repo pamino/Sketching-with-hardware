@@ -133,9 +133,13 @@
     <ClCompile Include="AdjacencyMatrix.h" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="PathFinding.cpp" />
+    <ClCompile Include="PathFindingSim.cpp" />
     <ClCompile Include="Simulator.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Sensor.h" />
+    <ClInclude Include="Pathfinding.h" />
+    <ClInclude Include="PathFindingSim.h" />
     <ClInclude Include="Simulator.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

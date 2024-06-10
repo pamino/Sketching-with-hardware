@@ -6,18 +6,20 @@
 //--------------------------------------------------------------------------------------------------------------
 
 //------ pushNode ------
-void AdjacencyMatrix::pushNode(const Node& node) {
-  if (!contains(node)) return;
+bool AdjacencyMatrix::pushNode(const Node& node) {
+  if (contains(node)) return false;
   ++length_;
   for (auto& row : data_)
     row.push_back(0);
   data_.push_back(std::vector<float>(length_, 0));
   nodes_.push_back(node);
+
+  return true;
 }
 
 //------ addDistance ------
 void AdjacencyMatrix::addDistance(const Node& nodeFrom, const Node& nodeTo, float dist) {
-  assert(!contains(nodeTo) || !contains(nodeFrom));
+  my_assert(contains(nodeTo) && contains(nodeFrom));
   data_[find(nodeFrom).value()][find(nodeTo).value()] = dist;
   data_[find(nodeTo).value()][find(nodeFrom).value()] = dist;
 }
@@ -51,6 +53,6 @@ std::optional<float> AdjacencyMatrix::getToFrom (const Node& nodeTo, const Node&
 
 //------ find ------
 std::optional<int> AdjacencyMatrix::find(Node node) const {
-  int ret = std::distance(std::ranges::find(nodes_, node), nodes_.begin());
-  return ret == nodes_.size() ? std::nullopt : std::optional(ret);
+  auto pIt = std::ranges::find_if(nodes_, [&node](Node rhs) { return node == rhs; });
+  return pIt == nodes_.end() ? std::nullopt : std::optional(std::distance(nodes_.begin(), pIt));
 }

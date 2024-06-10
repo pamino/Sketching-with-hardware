@@ -1,4 +1,5 @@
 #include "Simulator.h"
+#include "PathfindingSim.h"
 
 using namespace sf;
 
@@ -8,6 +9,9 @@ using namespace sf;
 
 void eventLoop() {
   Simulator sim{};
+  bool automatic = false;
+  PathFinderSim pathFind(((Car*)sim.car.get()));
+
   while (sim.window.isOpen()) {
     Event event;
     while (sim.window.pollEvent(event)) {
@@ -17,24 +21,31 @@ void eventLoop() {
 
     sim.window.clear(Color::White);
 
-    ((Car*)(sim.car.get()))->update(&sim.walls);
+    ((Car*)(sim.car.get()))->update();
 
     for (auto& pDrawable : sim.clickables)
       sim.window.draw(*pDrawable);
 
-    std::vector<std::shared_ptr<Drawable>> appendClickables;
-    for (auto& pClicked : sim.clickables) {
-      if (auto&& draw = (((Object*)pClicked.get())->isClicked(&sim.window));
-        draw != nullptr) {
+    if (Keyboard::isKeyPressed(Keyboard::Space))
+      automatic = true;
+    if (Keyboard::isKeyPressed(Keyboard::BackSpace))
+      automatic = false;
 
-        appendClickables.push_back(std::shared_ptr<Drawable>(draw));
+    if (automatic)
+      pathFind.depthFirstSearch();
+    else {
+      std::vector<std::shared_ptr<Drawable>> appendClickables;
+      for (auto& pClicked : sim.clickables) {
+        if (auto&& draw = (((Object*)pClicked.get())->isClicked(&sim.window));
+            draw != nullptr) {
+          appendClickables.push_back(std::shared_ptr<Drawable>(draw));
+        }
       }
+      sim.clickables.append_range(appendClickables);
+      sim.walls.append_range(appendClickables);
+
+      ((Object*)sim.car.get())->keyBoardMove();
     }
-    sim.clickables.append_range(appendClickables);
-    sim.walls.append_range(appendClickables);
-
-    ((Object*)sim.car.get())->keyBoardMove(&sim.clickables);
-
     sim.window.display();
   }
 }

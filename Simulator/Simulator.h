@@ -8,11 +8,14 @@
 #include <numeric>
 #include <functional>
 
+#include "Sensor.h"
+
 using namespace std::chrono_literals;
 
 namespace sf {
 
-static Font font_;
+inline Font font_;
+inline std::vector<std::shared_ptr<Drawable>>* pWalls;
 
 //------ rotateVector ------
 inline Vector2f rotateVector(const Vector2f& vector, float angleDegrees) {
@@ -54,7 +57,10 @@ public:
     front = normalizeVector(front);
   }
 
-  void keyBoardMove(std::vector<std::shared_ptr<Drawable>>* pDrawables);
+  void keyBoardMove();
+  bool backTrackedMove(Vector2f direct);
+  bool backTrackedTurn(bool right);
+  bool backTrackedTurn90(bool right);
 
   void draw(RenderTarget& target, RenderStates states) const override { target.draw(*pShape_, states); }
 
@@ -63,7 +69,7 @@ public:
   float x() const { return pShape_->getPosition().x; }
   float y() const { return pShape_->getPosition().y; }
 
-  Vector2f front{0, -1};
+  Vector2f front{};
 
 protected:
   std::shared_ptr<Shape> pShape_{nullptr};
@@ -90,11 +96,12 @@ private:
 //--------------------------------------------------------------------------------------------------------------
 
 struct Wall : public Clickable {
-  Wall(Vector2f pos, bool horizontal, std::function<Object*(Object*)> lambda) : Clickable(lambda) {
-    if (horizontal)
-      Clickable::pShape_ = std::make_shared<RectangleShape>(Vector2f{20, 200});
-    else
-      Clickable::pShape_ = std::make_shared<RectangleShape>(Vector2f{200, 20});
+  Wall(Vector2f pos, bool horizontal, std::function<Object*(Object*)> lambda)
+    : Wall(pos, horizontal ? Vector2f{400, 20} : Vector2f{20, 400}, lambda) {
+  }
+
+  Wall(Vector2f pos, Vector2f size, std::function<Object* (Object*)> lambda) : Clickable(lambda) {
+    Clickable::pShape_ = std::make_shared<RectangleShape>(size);
 
     Clickable::pShape_->setFillColor(Color::Black);
     Clickable::pShape_->setOrigin(Clickable::pShape_->getLocalBounds().width / 2.0f,
@@ -128,7 +135,7 @@ private:
 struct DistanceSensor : public Object {
   DistanceSensor() = default;
 
-  DistanceSensor(Vector2f direct, Vector2f pos, int radius, std::vector<std::shared_ptr<Drawable>>* pWalls);
+  DistanceSensor(Vector2f direct, Vector2f pos, int radius);
 
   DistanceSensor& operator = (const DistanceSensor& rhs);
 
@@ -137,9 +144,6 @@ struct DistanceSensor : public Object {
   void draw(RenderTarget& target, RenderStates states) const override { Object::draw(target, states); }
 
   std::optional<float> rectangleDistance(const RectangleShape& rectangle) const;
-private:
-
-  std::vector<std::shared_ptr<Drawable>>* pWalls_;
 };
 
 //--------------------------------------------------------------------------------------------------------------
@@ -147,9 +151,9 @@ private:
 //--------------------------------------------------------------------------------------------------------------
 
 struct Car : public Clickable {
-  Car(Vector2f pos, std::function<Object*(Object*)> lambda, std::vector<std::shared_ptr<Drawable>>* pWalls);
+  Car(Vector2f pos, std::function<Object*(Object*)> lambda);
 
-  void update(std::vector<std::shared_ptr<Drawable>>* pWalls);
+  void update();
 
   void draw(RenderTarget& target, RenderStates states) const override;
 
@@ -157,7 +161,7 @@ struct Car : public Clickable {
   void move(Vector2f direct) override {
     Object::move(direct);
     travelledDistance += std::sqrt(direct.x * direct.x + direct.y * direct.y);
-    for (auto& sensor : sensors_) sensor.move(direct);
+    for (auto& sensor : sensors) sensor.move(direct);
   }
 
   bool collides(FloatRect rect) override;
@@ -167,13 +171,14 @@ struct Car : public Clickable {
   void turn(bool right) override;
   void turn90(bool right) override;
 
-  const DistanceSensor& distanceSensor(int pos)         { return sensors_[pos]; }
-  int getTravelledDistance() { int ret = travelledDistance; travelledDistance = 0; return ret; }
+  const DistanceSensor& distanceSensor(int pos)         { return sensors[pos]; }
+  float getTravelledDistance() { return travelledDistance; }
+
+  std::vector<DistanceSensor> sensors; // topRight, topLeft, bottomRight, bottomLeft, topMiddle
 
 private:
   void updateSensorPositions();
   std::vector<Text> sensorsText_;
-  std::vector<DistanceSensor> sensors_; // topRight, topLeft, bottomRight, bottomLeft, topMiddle
 
   int radiusSensors = 10;
   float travelledDistance{0};
