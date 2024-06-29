@@ -10,11 +10,10 @@ struct PathFinderSim : public PathFinder {
   PathFinderSim(Car* car);
 
   void move() override;
-  void move(float dist) override;
+  void move(float dist);
 
   void turn90Right() override;
   void turn90Left() override;
-  void turn(Orientation direction) override;
   float measureDistance(SensorDirection direction) override { return sensors_[direction]->measureDistance(); }
 
   float travelledDist() override { return pCar_->getTravelledDistance(); }

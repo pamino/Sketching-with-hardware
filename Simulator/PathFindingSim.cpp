@@ -48,13 +48,3 @@ void PathFinderSim::turn90Left() {
     return;
   currentOrientation_ = currentOrientation_.turnLeft();
 }
-
-//------ turn ------
-void PathFinderSim::turn(Orientation orientation) {
-  if (currentOrientation_.turnRight() == orientation)
-    turn90Right();
-  else if (currentOrientation_.turnLeft() == orientation)
-    turn90Left();
-  else
-    my_assert(false);
-}

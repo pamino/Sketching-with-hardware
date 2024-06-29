@@ -31,8 +31,11 @@ void eventLoop() {
     if (Keyboard::isKeyPressed(Keyboard::BackSpace))
       automatic = false;
 
-    if (automatic)
-      pathFind.depthFirstSearch();
+    if (automatic) {
+      pathFind.search();
+      if (Keyboard::isKeyPressed(Keyboard::F10))
+        pathFind.setGoal(Node(sim.window.mapPixelToCoords(Mouse::getPosition()).x, sim.window.mapPixelToCoords(Mouse::getPosition()).y));
+    }
     else {
       std::vector<std::shared_ptr<Drawable>> appendClickables;
       for (auto& pClicked : sim.clickables) {

@@ -4,6 +4,7 @@
 #include <memory>
 #include <stack>
 #include <cassert>
+#include <unordered_set>
 #include "AdjacencyMatrix.h"
 #include "Sensor.h"
 
@@ -11,7 +12,8 @@
 // PathFinder
 //--------------------------------------------------------------------------------------------------------------
 
-using NodeSet = std::set < std::shared_ptr<Node>, decltype([](const std::shared_ptr<Node>& l, const std::shared_ptr<Node>& r) { return l.get() < r.get(); }) > ;
+using NodeSet = std::set<std::shared_ptr<Node>, decltype([](const std::shared_ptr<Node>& l, const std::shared_ptr<Node>& r)
+    { return l.get() < r.get(); })>;
 
 struct PathFinder {
   enum class State {
@@ -23,28 +25,26 @@ struct PathFinder {
     HANDLE_OUT_OF_JUNCTION_RIGHT,
     HANDLE_OUT_OF_JUNCTION_LEFT,
     BACKTRACK,
-    FINISHED
+    WAIT,
   };
 
 
   PathFinder() : currentNode_(std::shared_ptr<Node>(new Node(0,0))), currentOrientation_(NORTH) {}
 
-  void depthFirstSearch();
+  //------------------------------------------------------------------------------------------------------------
+  // TODO implement
 
-  virtual void move() = 0;
-  virtual void move(float dist) = 0;
+  virtual void move() = 0; // moves front a fixed distance, gets regularely called
+  virtual void turn90Right() = 0; // turns Right exactly 90° without covering distance
+  virtual void turn90Left() = 0; // turns LEFT exactly 90° without covering distance
+  virtual float measureDistance(SensorDirection direction) = 0; // measures distance of each Sensor
+  virtual bool touchWallTop() = 0; // detects if the car is touching a wall or is close to
+  virtual float travelledDist() = 0; // returns an absolute value of the travalled Distance
 
-  virtual void turn90Right() = 0;
+  //------------------------------------------------------------------------------------------------------------
 
-  virtual void turn90Left() = 0;
-  virtual void turn(Orientation orientation) = 0;
-
-  virtual float measureDistance(SensorDirection direction) = 0;
-
-  bool detectWall(SensorDirection direction) {
-    auto x = measureDistance(direction);
-    return measureDistance(direction) < wallDist_;
-  }
+  void turn(Orientation orientation);
+  bool detectWall(SensorDirection direction);
 
   float getTravelDist()                                 { return travelledDist() - travelledDist_; }
   void updateTravelDist()                               { travelledDist_ = travelledDist(); }
@@ -52,28 +52,9 @@ struct PathFinder {
   bool detectWallRight()                                { return detectWall(TOPRIGHT) || detectWall(BOTTOMRIGHT); }
   bool detectWallLeft()                                 { return detectWall(TOPLEFT) || detectWall(BOTTOMLEFT); }
 
-  virtual bool touchWallTop() = 0;
-
-  bool createNode() {
-    my_assert(visitedNodes_.find(currentNode_) == visitedNodes_.end());
-
-    if (!adjacencyMatrix_.pushNode(*currentNode_))
-      return false;
-    if (!begin_)
-      adjacencyMatrix_.addDistance(*nodeStack_.top(), *currentNode_, getTravelDist());
-    else
-      begin_ = false;
-    updateTravelDist();
-
-    auto node = std::make_shared<Node>(*currentNode_);
-    nodeStack_.push(node);
-
-    node->junction.insert({ currentOrientation_.turnBack(), true });
-    visitedNodes_.insert(node);
-
-    return true;
-  }
-  virtual float travelledDist() = 0;
+  bool createNode();
+  std::optional<Node> setGoal(const std::optional<Node>& node);
+  void search();
 
 protected:
   AdjacencyMatrix adjacencyMatrix_;
@@ -96,9 +77,13 @@ private:
   void handleOutOfJunctionLeft();
   void handleOutOfJunctionRight();
   void backtrack();
+  void wait();
+  void goTo(const Node& goal);
 
   bool backtrack_ = false;
   bool begin_ = true;
+  bool freePlay_ = false;
+  std::optional<Node> goal_;
 };
 
 

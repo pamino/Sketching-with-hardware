@@ -65,7 +65,7 @@ struct Node {
   Node(Pos x, Pos y) : x(x), y(y) {}
   Node() = default;
 
-  std::set<std::tuple<Orientation, bool>, OrientationComparator> junction;
+  std::set<std::tuple<Orientation, /*visited*/ bool>, OrientationComparator> junction;
 
   bool operator == (const Node& rhs) const { return x == rhs.x && y == rhs.y; };
 
@@ -81,17 +81,19 @@ struct AdjacencyMatrix {
   bool pushNode(const Node& node);
 
   void addDistance(const Node& nodeFrom, const Node& nodeTo, float dist);
-  std::optional<std::vector<float>> getFrom(const Node& node) const;
-  std::optional<float> getFromTo(const Node& nodeFrom, const Node& nodeTo) const;
-  std::optional<std::vector<float>> getTo(const Node& node) const;
-  std::optional<float> getToFrom(const Node& nodeTo, const Node& nodeFrom) const;
 
   std::optional<int> find(Node node) const;
 
   bool contains(Node node) const { return find(node).has_value(); }
 
+  std::vector<Node> const goTo(const Node& from, const Node to);
+
+  void floydWarshall();
+
+  std::vector<Node> nodes_; // order of Nodes
+
 private:
-  std::vector<std::vector<float>> data_;
+  std::vector<std::vector<float>> distanceData_;
   int length_{0};
-  std::vector<Node> nodes_;
+  std::vector<std::vector<int>> predecessor_;
 };

@@ -1,6 +1,6 @@
 #include "PathFinding.h"
 
-void PathFinder::depthFirstSearch() {
+void PathFinder::search() {
   switch (currentState_) {
     case State::BEGIN:
       initialize();
@@ -22,7 +22,9 @@ void PathFinder::depthFirstSearch() {
       break;
     case State::BACKTRACK:
       backtrack();
-    case State::FINISHED:
+      break;
+    case State::WAIT:
+      wait();
       return;
   }
 }
@@ -39,14 +41,16 @@ void PathFinder::initialize() {
 
 //------ moveToJunction ------
 void PathFinder::moveToJunction() {
-  if (nodeStack_.empty()) {
-    currentState_ = State::FINISHED;
-    return;
-  }
-  if (backtrack_) {
-    if (nodeStack_.size() == 1 && *currentNode_ == Node(0, 0)) {
-      currentState_ = State::HANDLE_JUNCTION;
+  if (!freePlay_) {
+    if (nodeStack_.empty()) {
+      currentState_ = State::WAIT;
       return;
+    }
+    if (backtrack_) {
+      if (nodeStack_.size() == 1 && *currentNode_ == Node(0, 0)) {
+        currentState_ = State::HANDLE_JUNCTION;
+        return;
+      }
     }
   }
   if (!detectWallRight() || !detectWallLeft()) {
@@ -56,13 +60,47 @@ void PathFinder::moveToJunction() {
   else if (touchWallTop()) {
     turn90Right();
     turn90Right();
+    if (!freePlay_)
+      backtrack_ = true;
+    else
+      assert(false);
     return;
   }
   move();
 }
 
+//------ moveOntoJunction ------
+void PathFinder::moveOntoJunction() {
+  static bool begin = true;
+
+  static float travelDistStart = 0;
+
+  if (begin) {
+    travelDistStart = getTravelDist();
+    begin = false;
+  }
+
+  if (getTravelDist() - travelDistStart < (wallDist_ / 4))
+    move();
+  else {
+    begin = true;
+    currentState_ = State::HANDLE_JUNCTION;
+  }
+}
+
 //------ handleJunction ------
 void PathFinder::handleJunction() {
+  if (freePlay_) {
+    auto nodes = adjacencyMatrix_.goTo(*currentNode_, goal_.value());
+    if (!nodes.empty())
+      goTo(nodes[0]);
+    else {
+      goal_ = std::nullopt;
+      currentState_ = State::WAIT;
+      return;
+    }
+    return;
+  }
   if (backtrack_) {
     currentState_ = State::BACKTRACK;
     return;
@@ -73,13 +111,25 @@ void PathFinder::handleJunction() {
   bool unvisitedFront = false;
   bool newNodeCreated = false;
 
+  adjacencyMatrix_.pushNode(*currentNode_);
+  if (!begin_)
+    adjacencyMatrix_.addDistance(*nodeStack_.top(), *currentNode_, getTravelDist());
+  else
+    begin_ = false;
+  updateTravelDist();
+
   auto pNodeIt = std::ranges::find_if(visitedNodes_, [this](std::shared_ptr<Node> n) { return *currentNode_ == *n; });
   Node* pCurrentNode;
   if (pNodeIt == visitedNodes_.end()) {
-    createNode(); pCurrentNode = nodeStack_.top().get(); newNodeCreated = true;
+    createNode(); pCurrentNode = nodeStack_.top().get();
   }
   else
     pCurrentNode = pNodeIt->get();
+
+  // adds path to where it came from
+  pCurrentNode->junction.erase({ currentOrientation_.turnBack(), false});
+  pCurrentNode->junction.insert({ currentOrientation_.turnBack(), true });
+
   if (!detectWallRight()) {
     auto pIt = pCurrentNode->junction.find({ currentOrientation_.turnRight(), false });
     if (pIt == pCurrentNode->junction.end()) {
@@ -139,9 +189,6 @@ void PathFinder::handleJunction() {
     return;
   }
   else {
-    pCurrentNode->junction.erase({ currentOrientation_.turnBack(), false});
-    pCurrentNode->junction.insert({ currentOrientation_.turnBack(), true });
-
     backtrack_ = true;
     if(newNodeCreated)
       nodeStack_.pop();
@@ -154,25 +201,6 @@ void PathFinder::handleJunction() {
       currentState_ = State::HANDLE_OUT_OF_JUNCTION_LEFT;
     }
     return;
-  }
-}
-
-//------ moveOntoJunction ------
-void PathFinder::moveOntoJunction() {
-  static bool begin = true;
-
-  static float travelDistStart = 0;
-
-  if (begin) {
-    travelDistStart = getTravelDist();
-    begin = false;
-  }
-
-  if (getTravelDist() - travelDistStart < (wallDist_ / 4))
-    move();
-  else {
-    begin = true;
-    currentState_ = State::HANDLE_JUNCTION;
   }
 }
 
@@ -193,12 +221,6 @@ void PathFinder::handleOutOfJunctionLeft() {
 //------ backtrack ------
 void PathFinder::backtrack() {
   auto pNode = nodeStack_.top();
-  nodeStack_.pop();
-
-  if (nodeStack_.empty()) {
-    currentState_ = State::FINISHED;
-    return;
-  }
 
   for (auto j : pNode->junction) {
     if (std::get<1>(j) == false) {
@@ -207,19 +229,47 @@ void PathFinder::backtrack() {
       return;
     }
   }
+  nodeStack_.pop();
+
+  if (nodeStack_.empty()) {
+    currentState_ = State::WAIT;
+    return;
+  }
+
   pNode = nodeStack_.top();
   assert(pNode != currentNode_);
 
-  if (currentNode_->x < pNode->x)
+  goTo(*pNode);
+  return;
+}
+
+//------ wait ------
+void PathFinder::wait() {
+  if (!freePlay_)
+    adjacencyMatrix_.floydWarshall();
+  freePlay_ = true;
+  backtrack_ = false;
+  goal_ = setGoal(adjacencyMatrix_.nodes_[4]);
+  if (!goal_.has_value()) {
+    return;
+  }
+  else {
+    currentState_ = State::HANDLE_JUNCTION;
+  }
+}
+
+//------ goTo ------
+void PathFinder::goTo(const Node& goal) {
+  if (currentNode_->x < goal.x)
     turn(EAST);
-  else if (currentNode_->x > pNode->x)
+  else if (currentNode_->x > goal.x)
     turn(WEST);
-  else if (currentNode_->y < pNode->y)
+  else if (currentNode_->y < goal.y)
     turn(SOUTH);
-  else if (currentNode_->y > pNode->y)
+  else if (currentNode_->y > goal.y)
     turn(NORTH);
   else
-    my_assert(false);
+    assert(false);
 
   if (!detectWallRight()) {
     currentState_ = State::HANDLE_OUT_OF_JUNCTION_RIGHT;
@@ -227,4 +277,41 @@ void PathFinder::backtrack() {
   else {
     currentState_ = State::HANDLE_OUT_OF_JUNCTION_LEFT;
   }
+}
+
+//------ turn ------
+void PathFinder::turn(Orientation orientation) {
+  if (currentOrientation_.turnRight() == orientation)
+    turn90Right();
+  else if (currentOrientation_.turnLeft() == orientation)
+    turn90Left();
+  else if (currentOrientation_.turnBack() == orientation) {
+    turn90Right();turn90Right();
+  }
+}
+
+//------ createNode ------
+bool PathFinder::createNode() {
+  assert(visitedNodes_.find(currentNode_) == visitedNodes_.end());
+
+  auto node = std::make_shared<Node>(*currentNode_);
+  nodeStack_.push(node);
+
+  visitedNodes_.insert(node);
+
+  return true;
+}
+
+//------ setGoal ------
+std::optional<Node> PathFinder::setGoal(const std::optional<Node>& node) {
+  static std::optional<Node> ret = std::nullopt;
+  auto temp = ret;
+  ret = node;
+  return temp;
+}
+
+//------ detectWall ------
+bool PathFinder::detectWall(SensorDirection direction) {
+  auto x = measureDistance(direction);
+  return measureDistance(direction) < wallDist_ * 1.5;
 }
