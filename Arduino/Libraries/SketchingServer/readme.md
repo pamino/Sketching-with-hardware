@@ -1,49 +1,55 @@
-# Distance libary
-
-![Distance in Use](./distance_in_use.jpeg)
-
-Simple libarry to ask for distances from an
-HC-SR04.
-
-## Wiring
-
-Four cables, looking at the back from left to right:
-Gnd: Ground
-Echo: Digital pin on arduino, used for reading
-Trig: Digital pin on arduino, used for writing
-Vcc: 5V connector
+# Network Library
 
 ## Example implementation
-This implementation can be seen on the photo. It uses two separate distance sensors.
+When no SSID and password are provided, we default to SSID "sketching" and password "with_hardware".
+
+Network.setup() blocks until it has found a wifi network
+network.receiveCommands blocks until the server had some commands. 
+The server marks those commands automatically as read as soon as they were 
+downloaded. Commands come as vector. We go through the vector in a for loop 
+and execute all commands. Afterwards, it looks for new commands.
+
+If wifi breaks off, we can only reset the device via button. 
+There is no recovering from it.
+
+Ran out of time, so almost no error checking, hence the no recovery and need
+for being reset.
 
 ```C
-#include <Distance.h>
+#include <SketchingServer.h>
 
-#define TRIG1 12
-#define ECHO1 13
-
-#define TRIG2 7
-#define ECHO2 8
-
-Distance dist1(ECHO1, TRIG1);
-Distance dist2(ECHO2, TRIG2);
+// SketchingServer network(SSID, PASSWORD);
+SketchingServer network(NULL, NULL);
 
 void setup() {
+  // put your setup code here, to run once:
   Serial.begin(9600);
-  dist1.setup();
-  dist2.setup();
+  Serial.println("\nInitialising: ");
+  network.setup();
 }
 
 void loop() {
-  float distance = dist1.measure();
-  Serial.print("Dist1: ");
-  Serial.print(distance);
-  Serial.println(" cm");
+  // put your main code here, to run repeatedly:
+  std::vector<Command> commands = network.receiveCommands();
+  for (int command_iterator = 0; command_iterator < commands.size(); command_iterator++) {
+    Command command = commands[command_iterator];
+    Serial.print("Running command '");
+    Serial.print(command.car_command);
+    Serial.println("'");
 
-  distance = dist2.measure();
-  Serial.print("Dist2: ");
-  Serial.print(distance);
-  Serial.println(" cm");
-  delay(5);
+    if (strcmp("print_log", command.car_command) == 0) {
+        std::vector<Log> logs = network.getLogs();
+        for (int i = 0; i < logs.size(); i++) {
+          Serial.print(logs[i].created_at);
+          Serial.print(": ");
+          Serial.println(logs[i].log_message);
+        }
+    } else if (strcmp("test_log", command.car_command) == 0) {
+        Log log = network.log("New Testlog");
+        Serial.print(log.created_at);
+        Serial.print(": ");
+        Serial.println(log.log_message);
+    }
+  }
 }
 ```
