@@ -31,17 +31,17 @@ void MotorController::stop() {
 }
 
 void MotorController::forward() {
-    digitalWrite(_pin1, HIGH);
-    digitalWrite(_pin2, LOW);
-    digitalWrite(_pin3, HIGH);
-    digitalWrite(_pin4, LOW);
+  digitalWrite(_pin1, HIGH);
+  digitalWrite(_pin2, HIGH);
+  digitalWrite(_pin3, LOW);
+  digitalWrite(_pin4, LOW);
 }
 
 void MotorController::backward() {
-    digitalWrite(_pin1, LOW);
-    digitalWrite(_pin2, HIGH);
-    digitalWrite(_pin3, LOW);
-    digitalWrite(_pin4, HIGH);
+  digitalWrite(_pin1, LOW);
+  digitalWrite(_pin2, LOW);
+  digitalWrite(_pin3, HIGH);
+  digitalWrite(_pin4, HIGH);
 }
 
 void MotorController::left() {
