@@ -35,15 +35,17 @@ struct PathFinder {
   // TODO implement
 
   virtual void move() = 0; // moves front a fixed distance, gets regularely called
-  virtual void turn90Right() = 0; // turns Right exactly 90° without covering distance
-  virtual void turn90Left() = 0; // turns LEFT exactly 90° without covering distance
+  virtual bool turn90RightImpl() = 0; // turns Right exactly 90 degrees without covering distance
+  virtual bool turn90LeftImpl() = 0; // turns LEFT exactly 90 degrees without covering distance
   virtual float measureDistance(SensorDirection direction) = 0; // measures distance of each Sensor
   virtual bool touchWallTop() = 0; // detects if the car is touching a wall or is close to
-  virtual float travelledDist() = 0; // returns an absolute value of the travalled Distance
+  virtual float travelledDist() = 0; // returns an absolute value of the travalled 
+
+  virtual void uploadNode(const Node& node) = 0; // uploads a Node somewhere, whenever it is created
 
   //------------------------------------------------------------------------------------------------------------
 
-  void turn(Orientation orientation);
+  bool turn(Orientation orientation);
   bool detectWall(SensorDirection direction);
 
   float getTravelDist()                                 { return travelledDist() - travelledDist_; }

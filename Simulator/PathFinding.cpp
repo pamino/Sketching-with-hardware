@@ -58,8 +58,7 @@ void PathFinder::moveToJunction() {
     return;
   }
   else if (touchWallTop()) {
-    turn90Right();
-    turn90Right();
+    turn(currentOrientation_.turnBack());
     if (!freePlay_)
       backtrack_ = true;
     else
@@ -173,7 +172,7 @@ void PathFinder::handleJunction() {
     }
   }
   else if (unvisitedRight) {
-    turn90Right();
+    turn(currentOrientation_.turnRight());
     pCurrentNode->junction.erase({ currentOrientation_, false });
     pCurrentNode->junction.insert({ currentOrientation_, true });
 
@@ -181,7 +180,7 @@ void PathFinder::handleJunction() {
     return;
   }
   else if (unvisitedLeft) {
-    turn90Left();
+    turn(currentOrientation_.turnLeft());
     pCurrentNode->junction.erase({ currentOrientation_, false });
     pCurrentNode->junction.insert({ currentOrientation_, true });
 
@@ -192,8 +191,7 @@ void PathFinder::handleJunction() {
     backtrack_ = true;
     if(newNodeCreated)
       nodeStack_.pop();
-    turn90Right();
-    turn90Right();
+    turn(currentOrientation_.turnBack());
     if (!detectWallRight()) {
       currentState_ = State::HANDLE_OUT_OF_JUNCTION_RIGHT;
     }
@@ -280,14 +278,22 @@ void PathFinder::goTo(const Node& goal) {
 }
 
 //------ turn ------
-void PathFinder::turn(Orientation orientation) {
-  if (currentOrientation_.turnRight() == orientation)
-    turn90Right();
-  else if (currentOrientation_.turnLeft() == orientation)
-    turn90Left();
-  else if (currentOrientation_.turnBack() == orientation) {
-    turn90Right();turn90Right();
+bool PathFinder::turn(Orientation orientation) {
+  if (currentOrientation_.turnRight() == orientation) {
+    if (turn90RightImpl())
+      currentOrientation_ = currentOrientation_.turnRight();
+    else return false;
   }
+  else if (currentOrientation_.turnLeft() == orientation) {
+    if (turn90LeftImpl())
+      currentOrientation_ = currentOrientation_.turnLeft();
+    else return false;
+  }
+  else if (currentOrientation_.turnBack() == orientation) {
+    bool ret = turn(currentOrientation_.turnRight());
+    return ret && turn(currentOrientation_.turnRight());
+  }
+  return true;
 }
 
 //------ createNode ------
@@ -313,5 +319,5 @@ std::optional<Node> PathFinder::setGoal(const std::optional<Node>& node) {
 //------ detectWall ------
 bool PathFinder::detectWall(SensorDirection direction) {
   auto x = measureDistance(direction);
-  return measureDistance(direction) < wallDist_ * 1.5;
+  return measureDistance(direction) < wallDist_ * 2;
 }

@@ -35,16 +35,21 @@ void PathFinderSim::move(float dist) {
   currentNode_->y += pCar_->front.y * dist;
 }
 
-//------ turn90Right ------
-void PathFinderSim::turn90Right() {
+//------ turn90RightImpl ------
+bool PathFinderSim::turn90RightImpl() {
   if (!((Object*)pCar_)->backTrackedTurn90(true))
-    return;
-  currentOrientation_ = currentOrientation_.turnRight();
+    return false;
+  return true;
 }
 
-//------ turn90Left ------
-void PathFinderSim::turn90Left() {
+//------ turn90LeftImpl ------
+bool PathFinderSim::turn90LeftImpl() {
   if (!((Object*)pCar_)->backTrackedTurn90(false))
-    return;
-  currentOrientation_ = currentOrientation_.turnLeft();
+    return false;
+  return true;
+}
+
+//------ uploadNode ------
+void PathFinderSim::uploadNode(const Node& node) {
+
 }

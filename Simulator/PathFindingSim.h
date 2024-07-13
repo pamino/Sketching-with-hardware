@@ -12,13 +12,15 @@ struct PathFinderSim : public PathFinder {
   void move() override;
   void move(float dist);
 
-  void turn90Right() override;
-  void turn90Left() override;
+
+  bool turn90RightImpl() override;
+  bool turn90LeftImpl() override;
   float measureDistance(SensorDirection direction) override { return sensors_[direction]->measureDistance(); }
 
   float travelledDist() override { return pCar_->getTravelledDistance(); }
 
   bool touchWallTop() override { return sensors_[SensorDirection::TOP]->measureDistance() < 20.0f; }
+  void uploadNode(const Node& node) override;
 
 private:
   std::array<const DistanceSensor*, 5> sensors_;
