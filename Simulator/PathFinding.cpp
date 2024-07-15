@@ -20,9 +20,6 @@ void PathFinder::search() {
     case State::HANDLE_OUT_OF_JUNCTION_RIGHT:
       handleOutOfJunctionRight();
       break;
-    case State::BACKTRACK:
-      backtrack();
-      break;
     case State::WAIT:
       wait();
       return;
@@ -43,16 +40,22 @@ void PathFinder::initialize() {
 void PathFinder::moveToJunction() {
   if (!freePlay_) {
     if (nodeStack_.empty()) {
-      currentState_ = State::WAIT;
+      if (currentNode_.x == 0 && currentNode_.y != 0)
+        move();
+      else
+        currentState_ = State::WAIT;
       return;
     }
     if (backtrack_) {
-      if (nodeStack_.size() == 1 && *currentNode_ == Node(0, 0)) {
+      if (nodeStack_.size() == 1 && currentNode_ == Node(0, 0)) {
         currentState_ = State::HANDLE_JUNCTION;
         return;
       }
     }
   }
+  if (goal_ == currentNode_)
+    currentState_ = State::WAIT;
+
   if (!detectWallRight() || !detectWallLeft()) {
     currentState_ = State::MOVE_ONTO_JUNCTION;
     return;
@@ -74,60 +77,90 @@ void PathFinder::moveOntoJunction() {
 
   static float travelDistStart = 0;
 
+  if (move_ != 0) {
+    move_ -= move();
+    if (move_ <= 0)
+      move_ = 0;
+  }
+
   if (begin) {
     travelDistStart = getTravelDist();
     begin = false;
   }
 
-  if (getTravelDist() - travelDistStart < (wallDist_ / 4))
+  if (move_ == 0 && getTravelDist() - travelDistStart < (wallDist_ / 3.7f)) {
+    if (measureDistance(TOPRIGHT) < wallDist_ * 1.5 && measureDistance(TOPLEFT) < wallDist_ * 1.5) {
+      turn(currentOrientation_.turnBack());
+      move_ = (wallDist_ / 8);
+      return;
+    }
     move();
+  }
   else {
-    begin = true;
-    currentState_ = State::HANDLE_JUNCTION;
+    if (measureDistance(BOTTOMLEFT) < wallDist_ * 1.5 && measureDistance(BOTTOMRIGHT) < wallDist_ * 1.5)
+      begin = true;
+    else {
+      if (freePlay_ && !goal_.has_value()) {
+        currentState_ = State::WAIT;
+        return;
+      }
+      begin = true;
+      currentState_ = State::HANDLE_JUNCTION;
+    }
   }
 }
 
 //------ handleJunction ------
 void PathFinder::handleJunction() {
+  static std::shared_ptr<Node> prevNode = nullptr;
+
   if (freePlay_) {
-    auto nodes = adjacencyMatrix_.goTo(*currentNode_, goal_.value());
+    if (!adjacencyMatrix_.contains(currentNode_)) {
+      currentState_ = State::MOVE_ONTO_JUNCTION;
+      return;
+    }
+    auto nodes = adjacencyMatrix_.goTo(currentNode_, goal_.value());
     if (!nodes.empty())
-      goTo(nodes[0]);
+      goToNeighbor(nodes[0]);
     else {
       goal_ = std::nullopt;
-      currentState_ = State::WAIT;
+      currentState_ = State::MOVE_ONTO_JUNCTION;
       return;
     }
     return;
   }
-  if (backtrack_) {
-    currentState_ = State::BACKTRACK;
-    return;
+
+  adjacencyMatrix_.pushNode(currentNode_);
+
+  auto pNodeIt = std::ranges::find_if(visitedNodes_, [this](std::shared_ptr<Node> n) { return currentNode_ == *n; });
+  std::shared_ptr<Node> pCurrentNode;
+  if (pNodeIt == visitedNodes_.end()) {
+    auto node = std::make_shared<Node>(currentNode_);
+    nodeStack_.push(node);
+    visitedNodes_.insert(node);
+    pCurrentNode = nodeStack_.top();
   }
+  else
+    pCurrentNode = *pNodeIt;
+
+  if (prevNode) {
+    if (prevNode != pCurrentNode)
+      adjacencyMatrix_.addDistance(*prevNode, currentNode_, getTravelDist());
+    prevNode->junction.erase({ currentOrientation_, false});
+    prevNode->junction.insert({ currentOrientation_, true });
+    pCurrentNode->junction.erase({ currentOrientation_.turnBack(), false});
+    pCurrentNode->junction.insert({ currentOrientation_.turnBack(), true });
+  }
+  else
+    begin_ = false;
+  updateTravelDist();
+
+  prevNode = pCurrentNode;
 
   bool unvisitedRight = false;
   bool unvisitedLeft = false;
   bool unvisitedFront = false;
   bool newNodeCreated = false;
-
-  adjacencyMatrix_.pushNode(*currentNode_);
-  if (!begin_)
-    adjacencyMatrix_.addDistance(*nodeStack_.top(), *currentNode_, getTravelDist());
-  else
-    begin_ = false;
-  updateTravelDist();
-
-  auto pNodeIt = std::ranges::find_if(visitedNodes_, [this](std::shared_ptr<Node> n) { return *currentNode_ == *n; });
-  Node* pCurrentNode;
-  if (pNodeIt == visitedNodes_.end()) {
-    createNode(); pCurrentNode = nodeStack_.top().get();
-  }
-  else
-    pCurrentNode = pNodeIt->get();
-
-  // adds path to where it came from
-  pCurrentNode->junction.erase({ currentOrientation_.turnBack(), false});
-  pCurrentNode->junction.insert({ currentOrientation_.turnBack(), true });
 
   if (!detectWallRight()) {
     auto pIt = pCurrentNode->junction.find({ currentOrientation_.turnRight(), false });
@@ -159,8 +192,6 @@ void PathFinder::handleJunction() {
 
   // decides which path to take
   if (unvisitedFront) {
-    pCurrentNode->junction.erase({ currentOrientation_, false });
-    pCurrentNode->junction.insert({ currentOrientation_, true });
 
     if (!detectWallRight()) {
       currentState_ = State::HANDLE_OUT_OF_JUNCTION_RIGHT;
@@ -173,21 +204,21 @@ void PathFinder::handleJunction() {
   }
   else if (unvisitedRight) {
     turn(currentOrientation_.turnRight());
-    pCurrentNode->junction.erase({ currentOrientation_, false });
-    pCurrentNode->junction.insert({ currentOrientation_, true });
 
     currentState_ = State::HANDLE_OUT_OF_JUNCTION_RIGHT;
     return;
   }
   else if (unvisitedLeft) {
     turn(currentOrientation_.turnLeft());
-    pCurrentNode->junction.erase({ currentOrientation_, false });
-    pCurrentNode->junction.insert({ currentOrientation_, true });
 
     currentState_ = State::HANDLE_OUT_OF_JUNCTION_LEFT;
     return;
   }
   else {
+    if (backtrack_) {
+      backtrack();
+      return;
+    }
     backtrack_ = true;
     if(newNodeCreated)
       nodeStack_.pop();
@@ -218,26 +249,37 @@ void PathFinder::handleOutOfJunctionLeft() {
 
 //------ backtrack ------
 void PathFinder::backtrack() {
-  auto pNode = nodeStack_.top();
-
-  for (auto j : pNode->junction) {
-    if (std::get<1>(j) == false) {
-      backtrack_ = false;
-      currentState_ = State::HANDLE_JUNCTION;
-      return;
-    }
-  }
-  nodeStack_.pop();
-
-  if (nodeStack_.empty()) {
+  static std::vector<Node> backtrackStack;
+   if (nodeStack_.empty()) {
     currentState_ = State::WAIT;
     return;
   }
 
-  pNode = nodeStack_.top();
-  assert(pNode != currentNode_);
+  if (backtrackStack.empty()) {
+    auto pNodeIt = std::ranges::find_if(visitedNodes_, [this](std::shared_ptr<Node> n) { return currentNode_ == *n; });
+    std::shared_ptr<Node> pCurrentNode = *pNodeIt;
 
-  goTo(*pNode);
+    adjacencyMatrix_.floydWarshall();
+    if (*nodeStack_.top() == currentNode_)
+      nodeStack_.pop();
+
+    if (nodeStack_.empty()) {
+      currentState_ = State::WAIT;
+      return;
+    }
+
+    backtrackStack = adjacencyMatrix_.goTo(currentNode_, *nodeStack_.top());
+  }
+  if (!backtrackStack.empty()) {
+    goToNeighbor(backtrackStack[0]);
+    backtrackStack.erase(backtrackStack.begin());
+  }
+  else {
+    goal_ = std::nullopt;
+    currentState_ = State::WAIT;
+    return;
+  }
+
   return;
 }
 
@@ -247,7 +289,7 @@ void PathFinder::wait() {
     adjacencyMatrix_.floydWarshall();
   freePlay_ = true;
   backtrack_ = false;
-  goal_ = setGoal(adjacencyMatrix_.nodes_[4]);
+  goal_ = setGoal();
   if (!goal_.has_value()) {
     return;
   }
@@ -256,20 +298,20 @@ void PathFinder::wait() {
   }
 }
 
-//------ goTo ------
-void PathFinder::goTo(const Node& goal) {
-  if (currentNode_->x < goal.x)
+//------ goToNeighbor ------
+void PathFinder::goToNeighbor(const Node& goal) {
+  if (currentNode_.x < goal.x)
     turn(EAST);
-  else if (currentNode_->x > goal.x)
+  else if (currentNode_.x > goal.x)
     turn(WEST);
-  else if (currentNode_->y < goal.y)
+  else if (currentNode_.y < goal.y)
     turn(SOUTH);
-  else if (currentNode_->y > goal.y)
+  else if (currentNode_.y > goal.y)
     turn(NORTH);
   else
     assert(false);
 
-  if (!detectWallRight()) {
+  if (!detectWall(BOTTOMRIGHT)) {
     currentState_ = State::HANDLE_OUT_OF_JUNCTION_RIGHT;
   }
   else {
@@ -296,28 +338,21 @@ bool PathFinder::turn(Orientation orientation) {
   return true;
 }
 
-//------ createNode ------
-bool PathFinder::createNode() {
-  assert(visitedNodes_.find(currentNode_) == visitedNodes_.end());
-
-  auto node = std::make_shared<Node>(*currentNode_);
-  nodeStack_.push(node);
-
-  visitedNodes_.insert(node);
-
-  return true;
-}
-
 //------ setGoal ------
-std::optional<Node> PathFinder::setGoal(const std::optional<Node>& node) {
-  static std::optional<Node> ret = std::nullopt;
-  auto temp = ret;
-  ret = node;
-  return temp;
+std::optional<Node> PathFinder::setGoal(const std::optional<Node>& goal) {
+  static std::optional<Node> _goal = std::nullopt;
+  std::optional<Node> ret = std::nullopt;
+  if (!goal.has_value()) {
+    ret = _goal;
+    _goal = std::nullopt;
+  }
+  else if (!_goal.has_value())
+    _goal = goal;
+  return ret;
 }
 
 //------ detectWall ------
 bool PathFinder::detectWall(SensorDirection direction) {
   auto x = measureDistance(direction);
-  return measureDistance(direction) < wallDist_ * 2;
+  return measureDistance(direction) < wallDist_ * 1.5;
 }

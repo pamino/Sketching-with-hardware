@@ -9,7 +9,7 @@ namespace sf {
 struct PathFinderSim : public PathFinder {
   PathFinderSim(Car* car);
 
-  void move() override;
+  float move() override;
   void move(float dist);
 
 

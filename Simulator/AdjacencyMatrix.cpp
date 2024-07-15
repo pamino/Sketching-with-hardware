@@ -41,14 +41,11 @@ void AdjacencyMatrix::addDistance(const Node& nodeFrom, const Node& nodeTo, floa
 }
 
 //------ goTo ------
-std::vector<Node> const AdjacencyMatrix::goTo(const Node& nodeFrom, const Node nodeTo) {
-  assert(contains(nodeTo) && contains(nodeFrom));
+std::vector<Node> const AdjacencyMatrix::goTo(const Node& nodeFrom, const Node& nodeTo) {
+   assert(contains(nodeTo) && contains(nodeFrom));
 
   int fromIndex = find(nodeFrom).value();
   int toIndex = find(nodeTo).value();
-
-  if (distanceData_[fromIndex][toIndex] == std::numeric_limits<float>::infinity() || fromIndex == toIndex)
-    return {};
 
   int from = fromIndex;
   int to = toIndex;
@@ -58,6 +55,8 @@ std::vector<Node> const AdjacencyMatrix::goTo(const Node& nodeFrom, const Node n
   ret.push_back(nodes_[to]);
   while (true) {
     to = predecessor_[from][to];
+    if (to == -1)
+      return {};
     if (from == to)
       break;
     ret.push_back(nodes_[to]);
@@ -67,9 +66,13 @@ std::vector<Node> const AdjacencyMatrix::goTo(const Node& nodeFrom, const Node n
 }
 
 //------ find ------
-std::optional<int> AdjacencyMatrix::find(Node node) const {
-  auto pIt = std::ranges::find_if(nodes_, [&node](Node rhs) { return node == rhs; });
-  return pIt == nodes_.end() ? std::nullopt : std::optional(std::distance(nodes_.begin(), pIt));
+std::optional<int> AdjacencyMatrix::find(const Node& node) const {
+  for (int i = 0; auto it : nodes_) {
+    if (node == it)
+      return i;
+    ++i;
+  }
+  return std::nullopt;
 }
 
 
@@ -90,7 +93,4 @@ void AdjacencyMatrix::floydWarshall() {
       }
     }
   }
-
-  // Update the data_ matrix with the shortest paths found
-  distanceData_ = dist;
 }

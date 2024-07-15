@@ -100,7 +100,7 @@ Object* Clickable::invoke() {
   static auto lastTime = std::chrono::high_resolution_clock::now();
 
   timeSinceLastInvoke = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - lastTime);
-  if (mutex != this && timeSinceLastInvoke < 100ms)
+  if (mutex != this && timeSinceLastInvoke < 50ms)
     return nullptr;
   mutex = this;
 
@@ -339,6 +339,24 @@ void Car::turn90(bool right) {
 }
 
 //--------------------------------------------------------------------------------------------------------------
+// DrawNode
+//--------------------------------------------------------------------------------------------------------------
+
+//------ DrawNode ------
+DrawNode::DrawNode(Vector2f pos, std::function<Object*(Object*)> lambda, std::shared_ptr<Node> pNode) :  Clickable(lambda), pNode(pNode) {
+  Object::pShape_ = std::shared_ptr<CircleShape>(new CircleShape((float)25));
+  Object::pShape_->setFillColor(Color::Red);
+  Object::pShape_->setPosition(Vector2f(pos.x - 25, pos.y - 25));
+}
+
+//------ DrawNode ------
+DrawNode& DrawNode::operator = (const DrawNode& rhs) {
+  this->pShape_ = rhs.pShape_;
+  this->pNode = rhs.pNode;
+  return *this;
+}
+
+//--------------------------------------------------------------------------------------------------------------
 // Simulator
 //--------------------------------------------------------------------------------------------------------------
 
@@ -365,16 +383,39 @@ Simulator::Simulator() : window(sf::VideoMode(1600, 1200), "Labyrinth") {
 
   // maze
   std::vector<std::tuple<Vector2f, bool>> maze = {
-    {{800, 1000}, false},
-    {{600, 1000}, false},
-    {{700, 1200}, true},
-    {{800, 600}, true},
-    {{1000, 800}, true},
-    {{1200, 600}, false},
-    {{400, 800}, true},
-    {{1000, 400}, true},
-    {{600, 400}, true},
-    {{400, 600}, false},
+  {{ 778, 1190 }, 0 },
+  {{ 596, 1188 }, 0 },
+  {{ 700, 1200 }, 1 },
+  {{ 411, 821 }, 1 },
+  {{ 973, 986 }, 1 },
+  {{ 10, 658 }, 0 },
+  {{ 403, 988 }, 1 },
+  {{ 211, 1197 }, 1 },
+  {{ 412, 644 }, 1 },
+  {{ 208, 1010 }, 0 },
+  {{ 11, 1010 }, 0 },
+  {{ 214, 468 }, 1 },
+  {{ 599, 434 }, 0 },
+  {{ 212, 297 }, 1 },
+  {{ 6, 381 }, 0 },
+  {{ 970, 829 }, 1 },
+  {{ 964, 645 }, 1 },
+  {{ 1355, 805 }, 0 },
+  {{ 1354, 633 }, 0 },
+  {{ 804, 645 }, 1 },
+  {{ 1166, 466 }, 1 },
+  {{ 794, 466 }, 1 },
+  {{ 1537, 822 }, 0 },
+  {{ 1538, 497 }, 0 },
+  {{ 400, 99 }, 0 },
+  {{ 1346, 291 }, 1 },
+  {{ 954, 291 }, 1 },
+  {{ 589, 94 }, 1 },
+  {{ 763, 81 }, 0 },
+  {{ 990, 1179 }, 1 },
+  {{ 1382, 1179 }, 1 },
+  {{ 1538, 972 }, 0 },
+
   };
 
   for (auto it : maze) {

@@ -82,11 +82,13 @@ struct AdjacencyMatrix {
 
   void addDistance(const Node& nodeFrom, const Node& nodeTo, float dist);
 
-  std::optional<int> find(Node node) const;
+  std::optional<int> find(const Node& node) const;
 
-  bool contains(Node node) const { return find(node).has_value(); }
+  bool contains(Node node) const {
+    return find(node).has_value();
+  }
 
-  std::vector<Node> const goTo(const Node& from, const Node to);
+  std::vector<Node> const goTo(const Node& from, const Node& to);
 
   void floydWarshall();
 

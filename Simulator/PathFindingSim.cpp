@@ -22,8 +22,9 @@ PathFinderSim::PathFinderSim(Car* pCar)
 }
 
 //------ move ------
-void PathFinderSim::move() {
-  return move(0.1f);
+float PathFinderSim::move() {
+  move(0.3f);
+  return 0.3f;
 }
 
 //------ move ------
@@ -31,8 +32,8 @@ void PathFinderSim::move(float dist) {
   if (!((Object*)pCar_)->backTrackedMove(pCar_->front * dist))
     return;
 
-  currentNode_->x += pCar_->front.x * dist;
-  currentNode_->y += pCar_->front.y * dist;
+  currentNode_.x += pCar_->front.x * dist;
+  currentNode_.y += pCar_->front.y * dist;
 }
 
 //------ turn90RightImpl ------

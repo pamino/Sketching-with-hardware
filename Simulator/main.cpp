@@ -1,6 +1,8 @@
 #include "Simulator.h"
 #include "PathfindingSim.h"
 
+#include <fstream>
+
 using namespace sf;
 
 //--------------------------------------------------------------------------------------------------------------
@@ -30,25 +32,37 @@ void eventLoop() {
       automatic = true;
     if (Keyboard::isKeyPressed(Keyboard::BackSpace))
       automatic = false;
+    if (Keyboard::isKeyPressed(Keyboard::F2)) {
+      std::ofstream file;
+      file.open("C:/Users/Admin/Documents/Sketching with hardware/labyrinth.txt");
+      for (auto wall : sim.walls) {
+        file << "{{ " << ((Object*)(wall.get()))->x() << ", " << ((Object*)(wall.get()))->y() << " }, " << ((Wall*)(wall.get()))->horizontal() << " }," << "\n";
+      }
+      file.close();
+    }
 
     if (automatic) {
       pathFind.search();
-      if (Keyboard::isKeyPressed(Keyboard::F10))
-        pathFind.setGoal(Node(sim.window.mapPixelToCoords(Mouse::getPosition()).x, sim.window.mapPixelToCoords(Mouse::getPosition()).y));
-    }
-    else {
-      std::vector<std::shared_ptr<Drawable>> appendClickables;
-      for (auto& pClicked : sim.clickables) {
-        if (auto&& draw = (((Object*)pClicked.get())->isClicked(&sim.window));
-            draw != nullptr) {
-          appendClickables.push_back(std::shared_ptr<Drawable>(draw));
-        }
+      if (auto pNode = pathFind.newNode()) {
+        sim.clickables.push_back(std::shared_ptr<Drawable>(new DrawNode(((Object*)sim.car.get())->shape()->getPosition(),
+          [&](Object* pThis) -> Object* {
+             pathFind.setGoal(*((DrawNode*)(pThis))->pNode);
+             return nullptr; },
+          pNode)));
       }
-      sim.clickables.append_range(appendClickables);
-      sim.walls.append_range(appendClickables);
-
-      ((Object*)sim.car.get())->keyBoardMove();
     }
+    std::vector<std::shared_ptr<Drawable>> appendClickables;
+    for (auto& pClicked : sim.clickables) {
+      if (auto&& draw = (((Object*)pClicked.get())->isClicked(&sim.window));
+          draw != nullptr) {
+        appendClickables.push_back(std::shared_ptr<Drawable>(draw));
+      }
+    }
+    sim.clickables.append_range(appendClickables);
+    sim.walls.append_range(appendClickables);
+
+    if (!automatic)
+      ((Object*)sim.car.get())->keyBoardMove();
     sim.window.display();
   }
 }

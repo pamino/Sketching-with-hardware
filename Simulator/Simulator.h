@@ -9,6 +9,7 @@
 #include <functional>
 
 #include "Sensor.h"
+#include "AdjacencyMatrix.h"
 
 using namespace std::chrono_literals;
 
@@ -98,6 +99,7 @@ private:
 struct Wall : public Clickable {
   Wall(Vector2f pos, bool horizontal, std::function<Object*(Object*)> lambda)
     : Wall(pos, horizontal ? Vector2f{400, 20} : Vector2f{20, 400}, lambda) {
+    horizontal_ = horizontal;
   }
 
   Wall(Vector2f pos, Vector2f size, std::function<Object* (Object*)> lambda) : Clickable(lambda) {
@@ -108,6 +110,11 @@ struct Wall : public Clickable {
       Clickable::pShape_->getLocalBounds().height / 2.0f);
     Clickable::pShape_->setPosition(pos);
   }
+
+  bool horizontal() { return horizontal_; }
+
+private:
+  bool horizontal_;
 };
 
 //--------------------------------------------------------------------------------------------------------------
@@ -182,6 +189,21 @@ private:
 
   int radiusSensors = 10;
   float travelledDistance{0};
+};
+
+//--------------------------------------------------------------------------------------------------------------
+// DrawNode
+//--------------------------------------------------------------------------------------------------------------
+
+struct DrawNode : public Clickable {
+  DrawNode(Vector2f pos, std::function<Object*(Object*)> lambda, std::shared_ptr<Node> pNode);
+  DrawNode() = default;
+
+  DrawNode& operator = (const DrawNode& rhs);
+
+  void draw(RenderTarget& target, RenderStates states) const override { Object::draw(target, states); }
+
+  std::shared_ptr<Node> pNode;
 };
 
 //--------------------------------------------------------------------------------------------------------------
